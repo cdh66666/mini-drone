@@ -328,7 +328,7 @@ function calcPid(a,b){
   const r=x=>Math.round(x*1000)/1000;
   return {angP:r(BASE.angP*s),rp:r(BASE.rp*s),pp:r(BASE.pp*s),
           rd:r(BASE.rd*s*(2-d)),pd:r(BASE.pd*s*(2-d)),ri:BASE.ri,pi:BASE.pi,
-          yp:BASE.yp,idle:BASE.idle,mthr:BASE.mthr,iThr:BASE.iThr};
+          yp:BASE.yp,idle:BASE.idle,mthr:BASE.mthr,iThr:BASE.iThr,ya:BASE.ya};
 }
 function lsGet(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v);}catch(e){return d;}}
 function lsSet(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}}
@@ -517,7 +517,7 @@ $('#btnOrig').addEventListener('click',()=>{
 function pushParams(save){
   const p=calcPid(+$('#sA').value,+$('#sB').value);
   delete p.yp; delete p.yi;   // 偏航由飞控自己定：空中测一次方向，测准后自己打开并保存
-  ['angP','rp','ri','rd','pp','pi','pd','yp','yi','idle','mthr','iThr'].forEach(k=>{ if(p[k]!=null) send('E,'+k+','+p[k]); });
+  ['angP','rp','ri','rd','pp','pi','pd','yp','yi','idle','mthr','iThr','ya'].forEach(k=>{ if(p[k]!=null) send('E,'+k+','+p[k]); });
   saveIfSafe();
   if(!canSave) $('#saved').textContent='只改内存（原参数在飞机里没动）';
   $('#pidTxt').textContent='P '+p.rp+' · I '+p.ri+' · D '+p.rd+' · 角度 '+p.angP;
