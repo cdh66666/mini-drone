@@ -478,7 +478,9 @@ function setConn(on){$('#cdot').classList.toggle('on',on);$('#ctext').textConten
 function afterConnect(){
   setConn(true); send('V'); markDone(0); netPanel();
   backupThenPush();
-  toast('连上了 ✓'); go(lsGet('fly.ready',false)?3:1);
+  toast('连上了 ✓');
+  const qs=/[?&]s=(\d)/.exec(location.search);   // ?s=N 直接打开第 N 步（截图、演示用）
+  go(qs?+qs[1]:(lsGet('fly.ready',false)?3:1));
 }
 let pushT=0;
 /* 先备份飞机里原来的参数，再写默认值。备份不到就只改内存、绝不存盘 */
@@ -600,6 +602,7 @@ $$('nav button').forEach(b=>b.addEventListener('click',()=>{ if(st.armed&&+b.dat
 go(0);
 // 自动连接：打开页面就连，没连上每 3 秒再试（不弹提示）
 if(SRV){ setTimeout(()=>srv.connect(true),300); setInterval(()=>{ if(!S.on) srv.connect(true); },3000); }
+if(MOCK&&/[?&]s=\d/.test(location.search)) setTimeout(()=>connect(),300);   // 演示：?mock&s=N 自动连上模拟飞机
 
 $('#btnConn').addEventListener('click',()=>connect());
 $('#next1').addEventListener('click',()=>{markDone(1);go(2);});
