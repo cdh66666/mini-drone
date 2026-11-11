@@ -575,15 +575,15 @@ function batShow(){
 function wifiHTML(q){ return '<span class="wq">'+[1,2,3,4].map(i=>'<i style="height:'+(3+i*3)+'px;background:'+(i<=q?(q>=3?'var(--ok)':q==2?'var(--warn)':'var(--bad)'):'#3d4a58')+'"></i>').join('')+'</span> WiFi'; }
 function wifiQ(q,rssi,loss){ const m=$('#mode'); if(srv.mode!=='wifi')return; m.innerHTML=wifiHTML(q); m.title='信号 '+rssi+' dBm · 丢包 '+loss+'%'; }
 
-/* ---------- 配平：点一下 0.2°，马上生效并存进飞机 ---------- */
+/* ---------- 配平：点一下 0.1°，马上生效并存进飞机 ---------- */
 function trimShow(){ if(!curP){$('#trimTxt').textContent='--';return;}
   const r=curP.trimR||0,p=curP.trimP||0; $('#trimTxt').textContent='前后 '+p.toFixed(1)+'° · 左右 '+r.toFixed(1)+'°'; }
 document.querySelectorAll('.tpad button').forEach(b=>b.addEventListener('click',()=>{
   if(!S.on){toast('先连接',1);return;} if(!curP){send('C');toast('读参数中，再点一次');return;}
   const [ax,dir]=b.dataset.t.split(','),k=ax==='P'?'trimP':'trimR';
-  curP[k]=Math.round(((curP[k]||0)+0.2*(+dir))*100)/100;
+  curP[k]=Math.round(((curP[k]||0)+0.1*(+dir))*100)/100;
   send('E,'+k+','+curP[k]); saveIfSafe(); trimShow();
-  toast((ax==='P'?(+dir>0?'往前':'往后'):(+dir>0?'往右':'往左'))+' 0.2° ✓');
+  toast((ax==='P'?(+dir>0?'往前':'往后'):(+dir>0?'往右':'往左'))+' 0.1° ✓');
 }));
 setInterval(trimShow,1000);
 
