@@ -552,8 +552,8 @@ function batShow(){
     CH.usb=D.usb;
   }
   if(D.usb&&CH.off==null&&CH.plugT&&nowS-CH.plugT>15) CH.off=Math.max(0,Math.min(0.12,v0-CH.plugV));
-  const settling=CH.armT&&nowS-CH.armT<10;                     // 刚飞完 10 秒内电压回升最快，先不更新
-  if(!st.armed&&!settling) CH.vs+=(v0-CH.vs)*Math.min(1,dts/20);
+  const settling=false;                                        // 用户要马上看到：飞完不等（刚落地几秒可能略低，随后回升）
+  if(!st.armed&&!settling) CH.vs+=(v0-CH.vs)*Math.min(1,dts/5);   // 平滑约 5 秒
   const v=CH.vs;
   const off=D.usb?(CH.off!=null?CH.off:0.04):0;                // 没量到时先按 0.04 V
   let pct=v>=4.19&&D.usb?100:pctOf(v-off);
