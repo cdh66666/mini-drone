@@ -552,7 +552,7 @@ function batShow(){
     CH.usb=D.usb;
   }
   if(D.usb&&CH.off==null&&CH.plugT&&nowS-CH.plugT>15) CH.off=Math.max(0,Math.min(0.12,v0-CH.plugV));
-  const settling=CH.armT&&nowS-CH.armT<60;                     // 刚飞完 1 分钟内电压还在回升，不更新
+  const settling=CH.armT&&nowS-CH.armT<10;                     // 刚飞完 10 秒内电压回升最快，先不更新
   if(!st.armed&&!settling) CH.vs+=(v0-CH.vs)*Math.min(1,dts/20);
   const v=CH.vs;
   const off=D.usb?(CH.off!=null?CH.off:0.04):0;                // 没量到时先按 0.04 V
