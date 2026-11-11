@@ -630,5 +630,43 @@ for key in ("hov", "ah", "ht", "climb", "khp", "khv", "khi"):
       else if (!strcmp(k, "%s")) g_%s = v;''' % (key, key))
     rep('''  else if (k == "angI") g_angI = v;''', '''  else if (k == "angI") g_angI = v;
   else if (k == "%s") g_%s = v;''' % (key, key))
+# ---- v14：v13 定高实测不行（振动让竖直加计偏几 % g、随油门变，积分 2 s 就差几十 cm；起飞一冲到 550）→ 默认关。
+# 改成：起飞油门 0.3 s 软启动 + 只压上下弹（竖直速度高通 τ 0.6 s，慢的偏差不累积），高度仍由油门决定。
+# 数据：60% 时飞机浮在地效里 10~15 cm、上下弹 ±0.25 m/s（周期 ~1.5 s）；仿真压弹后摆幅 22 → 5~7 cm。
+rep('#define FW_VER "flight-v13"', '#define FW_VER "flight-v14"')
+rep('static float g_ah = 1.0f;     // 定高开关/力度（0 = 关）',
+    '''static float g_ah = 0.0f;     // 定高开关/力度（0 = 关；v13 实测估计会漂，默认关）
+static float g_kdz = 200.0f;  // 压上下弹：每 1 m/s 竖直速度（高通）反向 g_kdz ‰（0 = 关）
+static float g_tz = 0.6f;     // 竖直速度高通时间常数（s）
+static float g_dzmax = 60.0f; // 压弹最多加减多少 ‰
+static float g_tramp = 0.3f;  // 起飞油门软启动（s）''')
+rep('''    static float az0 = 1.0f, iz = 0, iSum = 0; static int iN = 0, thr0 = -1; static bool on = false, wasOn = false;''',
+    '''    static float az0 = 1.0f, iz = 0, iSum = 0, vzh = 0, tOn = 0; static int iN = 0, thr0 = -1; static bool on = false, wasOn = false;''')
+rep('''      g_vz = g_hz = g_htg = 0; iz = iSum = 0; iN = 0; thr0 = -1; on = wasOn = false;''',
+    '''      g_vz = g_hz = g_htg = 0; iz = iSum = 0; iN = 0; thr0 = -1; on = wasOn = false; vzh = 0; tOn = 0;''')
+rep('''      g_vz += av * dt; g_hz += g_vz * dt;''',
+    '''      g_vz += av * dt; g_hz += g_vz * dt;
+      vzh += (av - vzh / (g_tz > 0.05f ? g_tz : 0.05f)) * dt;   // 高通竖直速度：只看快的上下动
+      tOn += dt;''')
+rep('''        if (g_htg >= 0.98f * g_ht) { iSum += g_ah * g_khi * iz; iN++; }
+      }''', '''        if (g_htg >= 0.98f * g_ht) { iSum += g_ah * g_khi * iz; iN++; }
+      } else {
+        // 软启动：起飞那一下 g_tramp 秒内从 0 爬到指令油门
+        if (g_tramp > 0.01f && tOn < g_tramp) thr = (int)(thr * (tOn / g_tramp));
+        // 压上下弹（离地后才有意义；油门太低时不加）
+        if (thr >= g_iThr && tOn > 0.1f) {
+          float dz = -g_kdz * vzh;
+          if (dz > g_dzmax) dz = g_dzmax; if (dz < -g_dzmax) dz = -g_dzmax;
+          thr += (int)dz; if (thr < 0) thr = 0; if (thr > P.mthr) thr = P.mthr;
+          g_htg = dz / 100.0f;      // 记录：压弹量（‰/100）
+        }
+        g_vz = vzh;                 // 记录：高通竖直速度
+      }''')
+rep('px,py,ap,ar,vdx,vdy,vz,hz,htg\\n");', 'px,py,ap,ar,vdx,vdy,vz,hz,dz\\n");')
+for key in ("kdz", "tz", "dzmax", "tramp"):
+    rep('''      else if (!strcmp(k, "angI")) g_angI = v;''', '''      else if (!strcmp(k, "angI")) g_angI = v;
+      else if (!strcmp(k, "%s")) g_%s = v;''' % (key, key))
+    rep('''  else if (k == "angI") g_angI = v;''', '''  else if (k == "angI") g_angI = v;
+  else if (k == "%s") g_%s = v;''' % (key, key))
 open(dst, 'w', encoding='utf-8').write(t)
 print('ok')
