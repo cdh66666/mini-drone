@@ -543,13 +543,24 @@ function pctOf(v){ if(v>=4.2)return 100; for(let i=1;i<OCV.length;i++){const[a,p
 const CH={hist:[],lastPct:null};
 function batShow(){
   const v0=D.vb/1000; if(!(v0>2.5))return;
-  // 电压先平滑（约 20 秒），再查表；百分比只往一个方向走：充电只升、放电只降（换状态时重置）
   const nowS=Date.now()/1000, dts=CH.vt?Math.min(5,nowS-CH.vt):0; CH.vt=nowS;
-  if(CH.vs==null||CH.usb!==D.usb){ CH.vs=v0; CH.usb=D.usb; CH.lastPct=null; }
-  else if(!st.armed) CH.vs+=(v0-CH.vs)*Math.min(1,dts/20);
+  if(st.armed) CH.armT=nowS;                                   // 飞行中：电压被拉低，不更新
+  if(CH.vs==null){ CH.vs=v0; CH.usb=D.usb; }
+  // 插上 / 拔掉 USB：量电压跳了多少当“充电偏移”（不再固定扣 0.06 V），百分比不跟着跳
+  if(CH.usb!==D.usb){
+    if(D.usb){ CH.plugV=CH.vs; CH.plugT=nowS; CH.off=null; } else { CH.off=null; CH.vs=v0; }
+    CH.usb=D.usb;
+  }
+  if(D.usb&&CH.off==null&&CH.plugT&&nowS-CH.plugT>15) CH.off=Math.max(0,Math.min(0.12,v0-CH.plugV));
+  const settling=CH.armT&&nowS-CH.armT<60;                     // 刚飞完 1 分钟内电压还在回升，不更新
+  if(!st.armed&&!settling) CH.vs+=(v0-CH.vs)*Math.min(1,dts/20);
   const v=CH.vs;
-  let pct=pctOf(D.usb?v-0.06:v);   // 充电时端电压虚高（189 mA × 内阻 ≈ 0.05 V）
-  if(CH.lastPct!=null){ pct = st.armed ? CH.lastPct : (D.usb ? Math.max(pct,CH.lastPct) : Math.min(pct,CH.lastPct)); }
+  const off=D.usb?(CH.off!=null?CH.off:0.04):0;                // 没量到时先按 0.04 V
+  let pct=v>=4.19&&D.usb?100:pctOf(v-off);
+  if(CH.lastPct!=null){
+    if(st.armed||settling) pct=CH.lastPct;                     // 飞行中和刚飞完：保持
+    else if(D.usb) pct=Math.max(pct,CH.lastPct);               // 充电中只升（插上那一下也不掉）
+  }
   CH.lastPct=pct;
   $('#batPct').textContent=pct+'%'; $('#vb').textContent=v.toFixed(2)+' V';
   const f=$('#batFill'); f.style.width=(pct*0.22)+'px'; f.style.background=pct<20?'var(--bad)':pct<40?'var(--warn)':'var(--ok)';

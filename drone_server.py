@@ -73,6 +73,7 @@ lock = threading.Lock()
 LINES = collections.deque(maxlen=3000)   # (序号, 文本)
 SEQ = [0]
 LINK = {"mode": None, "obj": None}
+BAT_T = [0.0]   # 电池记录上次写入时间（全局，避免多个连接对象重复写）
 
 
 def push(line):
@@ -208,6 +209,18 @@ class WifiLink:
             self.st["rx"] += 1
             self.st["rssi"] = int(a[17])
             arm = a[3] == "1"
+            # 电池记录（每 10 秒一行）：以后用来按这块电池校准电量表、估容量
+            if now - BAT_T[0] >= 10:
+                BAT_T[0] = now
+                try:
+                    fp = os.path.join(HERE, "flights", "battery_log.csv")
+                    new = not os.path.exists(fp)
+                    with open(fp, "a", encoding="utf-8") as f:
+                        if new: f.write("time,vb_mv,usb,armed,thr_cmd\n")
+                        f.write("%s,%s,%d,%d,%d\n" % (time.strftime("%Y-%m-%d %H:%M:%S"), a[2],
+                                                      1 if a[18] == "0" else 0, 1 if arm else 0, self.thr))
+                except Exception:
+                    pass
             # 整次飞行记录（解锁→上锁，25 Hz）：电压、油门、姿态、自转、电机，用来算续航
             if arm:
                 if not getattr(self, "was_arm", False):
