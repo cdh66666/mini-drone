@@ -44,10 +44,10 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font:14px/1.
       <span class="chip" id="hYaw">偏航 --</span>
       <span class="chip" id="hPos">位置 --</span>
     </div>
-    <div id="note">绿线 = 推算轨迹（粗估，会漂）　网格 1 m</div>
+    <div id="note"><b style="color:#2fc47a">绿线</b> = 飞机用倾斜角自己推算的位置。<b>不代表真实位置</b>：v11 起飞控就在把这条线往原点拉，所以它天然好看；录像实测真实漂移常是它的 5~10 倍。<br><b style="color:#ff8a3d">橙虚线</b> = 阻力读数推算（v12 起才有，飞控没用它，不会被拉回）：看方向和形状，距离要等阻力系数标定后才准。　网格 1 m</div>
   </div>
   <div id="side">
-    <div class="chart"><div class="h"><span>俯视轨迹（上 = 机头方向开始时）</span><span id="mapTxt"></span></div><canvas id="cMap" style="height:200px"></canvas></div>
+    <div class="chart"><div class="h"><span>俯视轨迹（上 = 机头方向开始时）<b style="color:#ff6b6b" id="selfWarn" hidden> · 绿线被飞控拉回过，不是真实位置</b></span><span id="mapTxt"></span></div><canvas id="cMap" style="height:200px"></canvas></div>
     <div class="lg"><span><i style="background:var(--acc)"></i>实测</span><span><i style="background:var(--mod)"></i>模型</span></div>
     <div class="chart"><div class="h"><span>操作：<b style="color:#3b9eff">油门%</b> · <b style="color:#2fc47a">左右杆</b> · <b style="color:#f0b429">前后杆</b></span><span id="opTxt"></span></div><canvas id="cOp"></canvas></div>
     <div class="chart" id="vbBox"><div class="h"><span>电池 V</span><span id="vbTxt"></span></div><canvas id="cVb"></canvas></div>
@@ -108,7 +108,14 @@ function buildTrail(){
   const pts=F.pos.map(p=>new THREE.Vector3(p[0],p[2],p[1]));
   const g=new THREE.BufferGeometry().setFromPoints(pts);
   trail=new THREE.Line(g,new THREE.LineBasicMaterial({color:0x2fc47a}));scene.add(trail);
+  if(trailD){scene.remove(trailD);trailD.geometry.dispose();trailD=null;}
+  if(F.pos_drag){
+    const gd=new THREE.BufferGeometry().setFromPoints(F.pos_drag.map(p=>new THREE.Vector3(p[0],0.002,p[1])));
+    trailD=new THREE.Line(gd,new THREE.LineDashedMaterial({color:0xff8a3d,dashSize:0.03,gapSize:0.02}));trailD.computeLineDistances();scene.add(trailD);
+  }
+  $('#selfWarn').hidden=!F.selfhold;
 }
+let trailD=null;
 function resize(){const w=view.clientWidth,h=view.clientHeight;renderer.setSize(w,h);cam.aspect=w/h;cam.updateProjectionMatrix();}
 addEventListener('resize',resize);
 // 鼠标拖动转视角
@@ -193,13 +200,16 @@ function opChart(){
 function map2d(){
   const c=$('#cMap'),g=c.getContext('2d'),W=c.width=c.clientWidth*2,H=c.height=400;
   g.clearRect(0,0,W,H);
-  const P=F.pos;let R=0.5;P.forEach(p=>{R=Math.max(R,Math.abs(p[0]),Math.abs(p[1]));});R*=1.15;
+  const P=F.pos,D=F.pos_drag;let R=0.5;P.forEach(p=>{R=Math.max(R,Math.abs(p[0]),Math.abs(p[1]));});if(D)D.forEach(p=>{R=Math.max(R,Math.abs(p[0]),Math.abs(p[1]));});R*=1.15;
   const X=p=>W/2+p[1]/R*(H/2),Y=p=>H/2-p[0]/R*(H/2);   // 右 = 右，上 = 前
   g.strokeStyle='#2a333e';g.lineWidth=1;for(let m=-Math.ceil(R);m<=Math.ceil(R);m++){const x=W/2+m/R*H/2,y=H/2-m/R*H/2;g.beginPath();g.moveTo(x,0);g.lineTo(x,H);g.stroke();g.beginPath();g.moveTo(0,y);g.lineTo(W,y);g.stroke();}
   g.strokeStyle='#2fc47a';g.lineWidth=3;g.beginPath();P.forEach((p,i)=>{i?g.lineTo(X(p),Y(p)):g.moveTo(X(p),Y(p));});g.stroke();
+  if(D){g.strokeStyle='#ff8a3d';g.lineWidth=3;g.setLineDash([12,8]);g.beginPath();D.forEach((p,i)=>{i?g.lineTo(X(p),Y(p)):g.moveTo(X(p),Y(p));});g.stroke();g.setLineDash([]);
+    g.fillStyle='#ff8a3d';g.beginPath();g.arc(X(D[idx]),Y(D[idx]),7,0,7);g.fill();}
   g.fillStyle='#fff';g.beginPath();g.arc(X(P[0]),Y(P[0]),6,0,7);g.fill();
   g.fillStyle='#ff4d4f';g.beginPath();g.arc(X(P[idx]),Y(P[idx]),9,0,7);g.fill();
-  $('#mapTxt').textContent='格 1 m · 高 '+P[idx][2].toFixed(2)+' m';
+  const dist=a=>Math.hypot(a[0],a[1]).toFixed(2);
+  $('#mapTxt').textContent='格 1 m · 绿 '+dist(P[idx])+' m'+(D?' · 橙 '+dist(D[idx])+' m':'');
 }
 let last=0;
 function loop(ts){

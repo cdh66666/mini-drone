@@ -145,6 +145,18 @@ def main():
         fl["fit"] = fit
         pos = dead_reckon(c, hover_thr)
         fl["pos"] = np.round(pos[idx], 3).tolist()
+        # 阻力读数轨迹（固件 v12+ 才有 vdx/vdy）：控制器没用它，不会被“拉回原点”，比较接近独立测量；
+        # 但阻力系数 μ 还没标定（固件按 0.5 算），所以只能看方向和形状，距离不准。
+        if "vdx" in c:
+            pd = np.zeros((len(c["thr"]), 2)); p2 = np.zeros(2)
+            for i in range(len(c["thr"])):
+                if c["thr"][i] >= 330:
+                    y = math.radians(yaw[i])
+                    vx, vy = c["vdx"][i], c["vdy"][i]
+                    p2 = p2 + np.array([vx * math.cos(y) - vy * math.sin(y), vx * math.sin(y) + vy * math.cos(y)]) * DT
+                pd[i] = p2
+            fl["pos_drag"] = np.round(pd[idx], 3).tolist()
+        fl["selfhold"] = "vx" in c          # v11+：控制器在把推算位置拉回原点，推算轨迹天然好看
         # 操作：黑匣子里的油门是输出值（‰ of 700 满）；方向杆 stR/stP（v4 以后有）
         fl["cmd"] = np.round(c["thr"][idx] / 7.0, 1).tolist()
         if "stR" in c:
@@ -157,7 +169,8 @@ def main():
         if len(R) < 10: continue
         g = lambda k: np.array([float(r[k]) for r in R]) if k in R[0] else None
         t = g("t"); n = len(t)
-        fl = {"name": "整次_" + os.path.basename(f), "head": "整次飞行（电脑端 25 Hz）", "full": True, "fixed": True}
+        fl = {"name": "整次_" + os.path.basename(f), "head": "整次飞行（电脑端 25 Hz）", "full": True, "fixed": True,
+              "selfhold": os.path.basename(f) >= "20261111_1400"}   # v11（11-11 14 点前后刷入）起飞控在拉回推算位置
         fl["t"] = np.round(t, 3).tolist()
         fl["cmd"] = np.round(g("thr_cmd") / 10.0, 1).tolist()           # 杆量 ‰ → %
         fl["thr"] = np.round(g("thr_cmd") * 0.7, 1).tolist()            # 近似输出 ‰

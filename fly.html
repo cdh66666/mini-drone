@@ -255,7 +255,8 @@ h2{margin:0;font-size:24px}
             <canvas id="liveMap" width="300" height="300"></canvas>
             <div class="zbar"><div id="liveZ"></div></div>
           </div>
-          <div class="cap" id="liveTxt">轨迹（估）</div>
+          <div class="cap" id="liveTxt">自估位置</div>
+          <div class="cap" style="color:#ff6b6b;font-size:11px">不是真实位置</div>
         </div>
       </div>
       <div class="mrow">
@@ -737,7 +738,7 @@ function liveDraw(){
   g.strokeStyle='#2fc47a';g.lineWidth=4;g.beginPath();LV.path.forEach((p,i)=>i?g.lineTo(X(p),Y(p)):g.moveTo(X(p),Y(p)));g.stroke();
   const cur=LV.path[LV.path.length-1]||[0,0];g.fillStyle='#ff4d4f';g.beginPath();g.arc(X(cur),Y(cur),9,0,7);g.fill();
   $('#liveZ').style.height=Math.min(100,LV.p[2]/2*100)+'%';
-  $('#liveTxt').textContent='前 '+LV.p[0].toFixed(1)+' · 右 '+LV.p[1].toFixed(1)+' · 高 '+LV.p[2].toFixed(1)+' m';
+  $('#liveTxt').textContent='自估：前 '+LV.p[0].toFixed(1)+' · 右 '+LV.p[1].toFixed(1)+' · 高 '+LV.p[2].toFixed(1)+' m';
 }
 $('#btnHist').addEventListener('click',()=>{ if(st.armed){toast('先降落',1);return;} location.href='/replay.html'; });
 
