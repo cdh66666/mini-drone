@@ -570,6 +570,23 @@ class H(BaseHTTPRequestHandler):
                                "time": time.strftime("%m-%d %H:%M", time.localtime(os.path.getmtime(fw))) if fw else None})
         if u.path == "/api/cam":       # 摄像头状态
             return self._json(cam_rec.get().info())
+        if u.path == "/api/cam.mjpg":  # 摄像头实时画面（MJPEG，约 10 帧/秒），页面 <img> 直接用
+            cam = cam_rec.get()
+            self.send_response(200)
+            self.send_header("Content-Type", "multipart/x-mixed-replace; boundary=frm")
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            last = None
+            try:
+                while True:
+                    b = cam.snapshot()
+                    if b and b is not last:
+                        last = b
+                        self.wfile.write(b"--frm\r\nContent-Type: image/jpeg\r\nContent-Length: %d\r\n\r\n" % len(b) + b + b"\r\n")
+                        self.wfile.flush()
+                    time.sleep(0.05)
+            except Exception:
+                return                     # 页面关了 / 断开
         if u.path == "/api/cam.jpg":   # 摄像头当前画面
             b = cam_rec.get().snapshot()
             if not b:
