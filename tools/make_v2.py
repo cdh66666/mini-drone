@@ -516,5 +516,48 @@ for key in ("vh", "ph", "vleak", "hmax"):
       else if (!strcmp(k, "%s")) g_%s = v;''' % (key, key))
     rep('''  else if (k == "angI") g_angI = v;''', '''  else if (k == "angI") g_angI = v;
   else if (k == "%s") g_%s = v;''' % (key, key))
+# ---- v12：阻力测速。空中加计只感到推力 + 空气阻力，推力沿机身 z，所以“加计倾角”（减过 trim）
+# 在空中 ≈ 阻力 / g ≈ μ·v / g：飞机往哪漂、漂多快，加计能直接看到，和水平校准差多少无关。
+# 低通后换算成速度 vdx/vdy = tan(加计倾角)·g/μ，用 dk（1/s）把推算速度往它拉（dk=0 = 关，和 v11 一样）。
+# 先只记录（黑匣子加 ap/ar/vdx/vdy 四列），飞几次用数据拟合 μ（符号也由数据定），再 E,dk 打开。
+rep('#define FW_VER "flight-v11"', '#define FW_VER "flight-v12"')
+rep('static float g_vx = 0, g_vy = 0, g_px = 0, g_py = 0;',
+    '''static float g_vx = 0, g_vy = 0, g_px = 0, g_py = 0;
+static float g_accR = 0, g_accP = 0;   // 只用加计算的倾角（度，减过 trim）：地上 = 倾斜，空中 ≈ 阻力
+static float g_apf = 0, g_arf = 0;     // 空中低通后的 tan(加计倾角)
+static float g_mu = 0.5f;              // 阻力系数（1/s）：阻力加速度 = μ·速度；负数 = 方向反过来
+static float g_dk = 0.0f;              // 推算速度往阻力测速拉的力度（1/s），0 = 关
+static float g_vdx = 0, g_vdy = 0;     // 阻力测出的速度（m/s）''')
+rep('''    float pitchA = (float)P.sgP * atan2f(-fax, sqrtf(fay * fay + fa[2] * fa[2])) * R2D - P.trimP;''',
+    '''    float pitchA = (float)P.sgP * atan2f(-fax, sqrtf(fay * fay + fa[2] * fa[2])) * R2D - P.trimP;
+    g_accR = rollA; g_accP = pitchA;''')
+rep('''    if (thr >= g_iThr && !stick && g_vh > 0.001f) {
+      g_vx += (9.81f * tanf(pitchF * 0.0174533f) - g_vleak * g_vx) * dt;
+      g_vy += (9.81f * tanf(rollF  * 0.0174533f) - g_vleak * g_vy) * dt;''',
+    '''    if (thr >= g_iThr) {   // 阻力测速：空中就算（不管开没开），方便记录
+      g_apf += (tanf(g_accP * 0.0174533f) - g_apf) * dt / 0.25f;
+      g_arf += (tanf(g_accR * 0.0174533f) - g_arf) * dt / 0.25f;
+      const float mu = (fabsf(g_mu) < 0.05f) ? 0.05f : g_mu;
+      g_vdx = g_apf * 9.81f / mu; g_vdy = g_arf * 9.81f / mu;
+    } else { g_apf = g_arf = 0; g_vdx = g_vdy = 0; }
+    if (thr >= g_iThr && !stick && g_vh > 0.001f) {
+      g_vx += (9.81f * tanf(pitchF * 0.0174533f) - g_vleak * g_vx + g_dk * (g_vdx - g_vx)) * dt;
+      g_vy += (9.81f * tanf(rollF  * 0.0174533f) - g_vleak * g_vy + g_dk * (g_vdy - g_vy)) * dt;''')
+rep('az, yaw, vx, vy, px, py; };', 'az, yaw, vx, vy, px, py, ap, ar, vdx, vdy; };')
+rep('''    r.vx = (int16_t)(g_vx * 100); r.vy = (int16_t)(g_vy * 100); r.px = (int16_t)(g_px * 100); r.py = (int16_t)(g_py * 100);''',
+    '''    r.vx = (int16_t)(g_vx * 100); r.vy = (int16_t)(g_vy * 100); r.px = (int16_t)(g_px * 100); r.py = (int16_t)(g_py * 100);
+    r.ap = (int16_t)(tanf(g_accP * 0.0174533f) * 10000); r.ar = (int16_t)(tanf(g_accR * 0.0174533f) * 10000);
+    r.vdx = (int16_t)(g_vdx * 100); r.vdy = (int16_t)(g_vdy * 100);''')
+rep('stP,oY,az,yaw,vx,vy,px,py\\n");', 'stP,oY,az,yaw,vx,vy,px,py,ap,ar,vdx,vdy\\n");')
+rep('''    char l[200];''', '''    char l[240];''')
+rep('''%.3f,%.1f,%.2f,%.2f,%.2f,%.2f\\n",''', '''%.3f,%.1f,%.2f,%.2f,%.2f,%.2f,%.4f,%.4f,%.2f,%.2f\\n",''')
+rep('''r.vx / 100.0, r.vy / 100.0, r.px / 100.0, r.py / 100.0);''',
+    '''r.vx / 100.0, r.vy / 100.0, r.px / 100.0, r.py / 100.0,
+             r.ap / 10000.0, r.ar / 10000.0, r.vdx / 100.0, r.vdy / 100.0);''')
+for key in ("mu", "dk"):
+    rep('''      else if (!strcmp(k, "angI")) g_angI = v;''', '''      else if (!strcmp(k, "angI")) g_angI = v;
+      else if (!strcmp(k, "%s")) g_%s = v;''' % (key, key))
+    rep('''  else if (k == "angI") g_angI = v;''', '''  else if (k == "angI") g_angI = v;
+  else if (k == "%s") g_%s = v;''' % (key, key))
 open(dst, 'w', encoding='utf-8').write(t)
 print('ok')
