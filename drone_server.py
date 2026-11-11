@@ -572,6 +572,8 @@ class H(BaseHTTPRequestHandler):
             return self._json(cam_rec.get().info())
         if u.path == "/api/cam.mjpg":  # 摄像头实时画面（MJPEG，约 10 帧/秒），页面 <img> 直接用
             cam = cam_rec.get()
+            if not cam_rec.enabled():
+                self.send_response(404); self.end_headers(); return
             self.send_response(200)
             self.send_header("Content-Type", "multipart/x-mixed-replace; boundary=frm")
             self.send_header("Cache-Control", "no-store")

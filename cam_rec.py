@@ -2,7 +2,7 @@
 
 存到 flights/video/<名字>.mp4，旁边 <名字>_t.csv 记每一帧相对解锁时刻的秒数，
 名字和 flights/full/<名字>.csv 一样，方便和推算轨迹对齐。
-摄像头编号默认 0，可在 camera.txt 里写别的数字。没装 OpenCV 或打不开摄像头就什么都不做。
+默认关（不开摄像头、不录像）。要开就建 camera.txt，里面写摄像头编号（比如 0）。没装 OpenCV 或打不开也什么都不做。
 """
 import os, time, threading, collections
 
@@ -116,11 +116,27 @@ class CamRec:
                 "rec": self.rec is not None}
 
 
+class _Off:
+    """摄像头关着：什么都不做，不开摄像头、不占内存"""
+    def start(self, t0): pass
+    def stop(self, name): pass
+    def snapshot(self): return None
+    def info(self): return {"status": "关", "fps": 0, "dark": False, "rec": False}
+
+
 CAM = None
+
+
+def enabled():
+    """默认关。要开：在 camera.txt 里写摄像头编号（比如 0）"""
+    try:
+        return open(os.path.join(HERE, "camera.txt")).read().strip().isdigit()
+    except Exception:
+        return False
 
 
 def get():
     global CAM
     if CAM is None:
-        CAM = CamRec()
+        CAM = CamRec() if enabled() else _Off()
     return CAM
