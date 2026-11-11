@@ -559,5 +559,76 @@ for key in ("mu", "dk"):
       else if (!strcmp(k, "%s")) g_%s = v;''' % (key, key))
     rep('''  else if (k == "angI") g_angI = v;''', '''  else if (k == "angI") g_angI = v;
   else if (k == "%s") g_%s = v;''' % (key, key))
+# ---- v13：平稳起飞 + 定高（只用自己的加计）。数据：60% 一键起飞后贴地 10~15 cm 上下弹（地效 + 固定油门）。
+# 地上（没解锁或油门 0）把竖直加计读数当 1 g 标定；空中积分出竖直速度 vz、高度 hz。
+# 起飞后目标高度从 0 平滑升到 ht（爬升 climb，快到时放慢），油门 = 学到的悬停油门 hov + PID(高度, 速度, 积分)，
+# 不用一键油门值（60/70% 都一样）。动了油门（降落按钮、拉杆）就交回手动。落地后按积分平均值修正 hov 并存 NVS。
+rep('#define FW_VER "flight-v12"', '#define FW_VER "flight-v13"')
+rep('static float g_vh = 8.0f;', '''static float g_hov = 405.0f;  // 学到的悬停油门（‰，电压补偿前），存 NVS
+static float g_ah = 1.0f;     // 定高开关/力度（0 = 关）
+static float g_ht = 0.4f;     // 起飞目标高度（m）
+static float g_climb = 0.3f;  // 爬升速度（m/s）
+static float g_khp = 150.0f, g_khv = 250.0f, g_khi = 60.0f;   // ‰/m、‰/(m/s)、‰/(m·s)
+static float g_vz = 0, g_hz = 0, g_htg = 0;   // 竖直速度、高度、目标高度（记录用）
+static float g_vh = 8.0f;''')
+rep('''  prefs.putFloat("bR", g_bR); prefs.putFloat("bP", g_bP);''', '''  prefs.putFloat("bR", g_bR); prefs.putFloat("bP", g_bP);
+  prefs.putFloat("hov", g_hov);''')
+rep('''    g_bR = prefs.getFloat("bR", 0.0f); g_bP = prefs.getFloat("bP", 0.0f);''', '''    g_bR = prefs.getFloat("bR", 0.0f); g_bP = prefs.getFloat("bP", 0.0f);
+    g_hov = prefs.getFloat("hov", g_hov);''')
+rep('''  if (thr < 0) thr = 0; if (thr > P.mthr) thr = P.mthr;
+  if (g_vcomp && vbatMv > 3000 && thr > 0) {''', '''  if (thr < 0) thr = 0; if (thr > P.mthr) thr = P.mthr;
+  {
+    static float az0 = 1.0f, iz = 0, iSum = 0; static int iN = 0, thr0 = -1; static bool on = false, wasOn = false;
+    const float tilt = cosf(rollF * 0.0174533f) * cosf(pitchF * 0.0174533f);
+    if (!g_armed || g_thr == 0) {
+      // 地上：竖直加计读数当 1 g（机身静止时慢慢跟）
+      if (fabsf(g_gr) < 5.0f && fabsf(g_gp) < 5.0f && g_az > 0.5f) az0 += (g_az * tilt - az0) * dt / 0.5f;
+      if (wasOn && iN > 250) {   // 这次定高跑过：按积分平均值修正悬停油门
+        g_hov += 0.6f * (iSum / (float)iN);
+        if (g_hov < 250) g_hov = 250; if (g_hov > 650) g_hov = 650;
+        g_needSave = true;
+      }
+      g_vz = g_hz = g_htg = 0; iz = iSum = 0; iN = 0; thr0 = -1; on = wasOn = false;
+    } else {
+      if (thr0 < 0) thr0 = g_thr;
+      const bool moved = abs(g_thr - thr0) > 30;
+      const float av = (g_az * tilt / az0 - 1.0f) * 9.81f;
+      g_vz += av * dt; g_hz += g_vz * dt;
+      if (g_hz < 0) { g_hz = 0; if (g_vz < 0) g_vz = 0; }
+      if (moved) on = false;
+      else if (!wasOn && g_ah > 0.001f) on = true;      // 只在起飞那一下接管
+      if (on) {
+        wasOn = true;
+        float vt = g_climb, rem = g_ht - g_htg;
+        if (vt > 1.5f * rem) vt = 1.5f * rem; if (vt < 0) vt = 0;
+        g_htg += vt * dt;
+        const float eh = g_htg - g_hz;
+        iz += eh * dt;
+        const float imax = 150.0f / (g_khi > 1.0f ? g_khi : 1.0f);
+        if (iz > imax) iz = imax; if (iz < -imax) iz = -imax;
+        float d = g_ah * (g_khp * eh + g_khv * (vt - g_vz) + g_khi * iz);
+        if (d > 200) d = 200; if (d < -200) d = -200;
+        thr = (int)(g_hov + d);
+        if (thr < 0) thr = 0; if (thr > P.mthr) thr = P.mthr;
+        if (g_htg >= 0.98f * g_ht) { iSum += g_ah * g_khi * iz; iN++; }
+      }
+    }
+  }
+  if (g_vcomp && vbatMv > 3000 && thr > 0) {''')
+rep('vx, vy, px, py, ap, ar, vdx, vdy; };', 'vx, vy, px, py, ap, ar, vdx, vdy, vz, hz, htg; };')
+rep('''    r.vdx = (int16_t)(g_vdx * 100); r.vdy = (int16_t)(g_vdy * 100);''', '''    r.vdx = (int16_t)(g_vdx * 100); r.vdy = (int16_t)(g_vdy * 100);
+    r.vz = (int16_t)(g_vz * 100); r.hz = (int16_t)(g_hz * 100); r.htg = (int16_t)(g_htg * 100);''')
+rep('px,py,ap,ar,vdx,vdy\\n");', 'px,py,ap,ar,vdx,vdy,vz,hz,htg\\n");')
+rep('''    char l[240];''', '''    char l[280];''')
+rep('''%.4f,%.4f,%.2f,%.2f\\n",''', '''%.4f,%.4f,%.2f,%.2f,%.2f,%.2f,%.2f\\n",''')
+rep('''             r.ap / 10000.0, r.ar / 10000.0, r.vdx / 100.0, r.vdy / 100.0);''',
+    '''             r.ap / 10000.0, r.ar / 10000.0, r.vdx / 100.0, r.vdy / 100.0, r.vz / 100.0, r.hz / 100.0, r.htg / 100.0);''')
+rep('''\\"rot\\":%.1f,\\"bR\\":%.1f,\\"bP\\":%.1f}",''', '''\\"rot\\":%.1f,\\"bR\\":%.1f,\\"bP\\":%.1f,\\"hov\\":%.1f}",''')
+rep('''(double)g_rot, (double)g_bR, (double)g_bP);''', '''(double)g_rot, (double)g_bR, (double)g_bP, (double)g_hov);''')
+for key in ("hov", "ah", "ht", "climb", "khp", "khv", "khi"):
+    rep('''      else if (!strcmp(k, "angI")) g_angI = v;''', '''      else if (!strcmp(k, "angI")) g_angI = v;
+      else if (!strcmp(k, "%s")) g_%s = v;''' % (key, key))
+    rep('''  else if (k == "angI") g_angI = v;''', '''  else if (k == "angI") g_angI = v;
+  else if (k == "%s") g_%s = v;''' % (key, key))
 open(dst, 'w', encoding='utf-8').write(t)
 print('ok')
