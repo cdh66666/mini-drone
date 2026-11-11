@@ -282,7 +282,7 @@ h2{margin:0;font-size:24px}
         <div class="dim" style="font-size:12px;text-align:center">总往哪飘，就点反方向</div>
       </div>
       <div class="keys" style="display:none"><span class="key" id="kU"></span><span class="key" id="kL"></span><span class="key" id="kD"></span><span class="key" id="kR"></span></div>
-      <div class="dim" style="font-size:12px;text-align:center">⏎ 起飞 · 空格 急停 · 方向键 扶正</div>
+      <div class="dim" style="font-size:12px;text-align:center">⏎ 起飞 · 空格 急停 · 方向键 扶正 · W/S 高低</div>
     </div>
   </div>
 </section>
@@ -575,15 +575,15 @@ function batShow(){
 function wifiHTML(q){ return '<span class="wq">'+[1,2,3,4].map(i=>'<i style="height:'+(3+i*3)+'px;background:'+(i<=q?(q>=3?'var(--ok)':q==2?'var(--warn)':'var(--bad)'):'#3d4a58')+'"></i>').join('')+'</span> WiFi'; }
 function wifiQ(q,rssi,loss){ const m=$('#mode'); if(srv.mode!=='wifi')return; m.innerHTML=wifiHTML(q); m.title='信号 '+rssi+' dBm · 丢包 '+loss+'%'; }
 
-/* ---------- 配平：点一下 0.5°，马上生效并存进飞机 ---------- */
+/* ---------- 配平：点一下 0.2°，马上生效并存进飞机 ---------- */
 function trimShow(){ if(!curP){$('#trimTxt').textContent='--';return;}
   const r=curP.trimR||0,p=curP.trimP||0; $('#trimTxt').textContent='前后 '+p.toFixed(1)+'° · 左右 '+r.toFixed(1)+'°'; }
 document.querySelectorAll('.tpad button').forEach(b=>b.addEventListener('click',()=>{
   if(!S.on){toast('先连接',1);return;} if(!curP){send('C');toast('读参数中，再点一次');return;}
   const [ax,dir]=b.dataset.t.split(','),k=ax==='P'?'trimP':'trimR';
-  curP[k]=Math.round(((curP[k]||0)+0.5*(+dir))*100)/100;
+  curP[k]=Math.round(((curP[k]||0)+0.2*(+dir))*100)/100;
   send('E,'+k+','+curP[k]); saveIfSafe(); trimShow();
-  toast((ax==='P'?(+dir>0?'往前':'往后'):(+dir>0?'往右':'往左'))+' 0.5° ✓');
+  toast((ax==='P'?(+dir>0?'往前':'往后'):(+dir>0?'往右':'往左'))+' 0.2° ✓');
 }));
 setInterval(trimShow,1000);
 
@@ -762,10 +762,10 @@ let confirmed=false;
 $('#confirm').addEventListener('click',()=>{confirmed=!confirmed;$('#confirm').classList.toggle('on',confirmed);});
 const thr=$('#thr');
 thr.addEventListener('input',()=>{st.target=+thr.value;st.landing=false;});
-const tk=$('#tkoff');tk.value=lsGet('fly.tkoff',60);
-tk.addEventListener('change',()=>{const v=Math.max(20,Math.min(90,+tk.value||60));tk.value=v;lsSet('fly.tkoff',v);tk.blur();});
+const tk=$('#tkoff');tk.value=lsGet('fly.tkoff2',64);   // 60% 浮不出地效（只有 5~10 cm），默认 64
+tk.addEventListener('change',()=>{const v=Math.max(20,Math.min(90,+tk.value||64));tk.value=v;lsSet('fly.tkoff2',v);tk.blur();});
 let pendingTk=false;
-function takeoffJump(){ const v=+tk.value||60; st.landing=false; st.target=v; st.cmd=v; thr.value=v; toast('⏎ 起飞 '+v+'%'); }
+function takeoffJump(){ const v=+tk.value||64; st.landing=false; st.target=v; st.cmd=v; thr.value=v; toast('⏎ 起飞 '+v+'%'); }
 function takeoff(){
   if(!S.on||cur!==3) return;
   if(!confirmed){toast('先点“确认”',1);$('#confirm').classList.add('flash');setTimeout(()=>$('#confirm').classList.remove('flash'),500);return;}
@@ -795,7 +795,7 @@ setInterval(()=>{
   if(st.landing){ st.target=Math.max(0,st.target-2.5); thr.value=Math.round(st.target); if(st.target<=0&&st.cmd<=0){ send('A,0'); armedUI(false); toast('落地 ✓'); return; } }
   if(st.target>st.cmd) st.cmd=Math.min(st.target,st.cmd+5);   // 往上最快 50%/秒
   else st.cmd=st.target;                                        // 往下立刻
-  const T=0.14;   // 杆量 × 最大倾角 25° ≈ 3.5°
+  const T=0.24;   // 杆量 × 最大倾角 25° ≈ 6°（3.5° 推不动，8.7° 会冲出去撞）
   st.r=(keys.ArrowRight?T:0)-(keys.ArrowLeft?T:0);
   st.p=(keys.ArrowUp?T:0)-(keys.ArrowDown?T:0);   // sgP=-1 后：pitch+ = 1、2 号那边往下 = 往前飞
   send('G,'+Math.round(st.cmd*10));
@@ -821,8 +821,8 @@ window.addEventListener('keydown',e=>{
   if(e.code==='Space'){e.preventDefault();estop();return;}
   if(KEYMAP[e.key]){e.preventDefault();keys[e.key]=true;$('#'+KEYMAP[e.key]).classList.add('on');return;}
   if(e.key==='Enter'){e.preventDefault();if(cur===3)takeoff();return;}
-  if(cur===3&&(e.key==='w'||e.key==='W')){thr.value=Math.min(100,+thr.value+3);st.target=+thr.value;st.landing=false;}
-  if(cur===3&&(e.key==='s'||e.key==='S')){thr.value=Math.max(0,+thr.value-3);st.target=+thr.value;}
+  if(cur===3&&(e.key==='w'||e.key==='W')){thr.value=Math.min(100,+thr.value+1);st.target=+thr.value;st.landing=false;}
+  if(cur===3&&(e.key==='s'||e.key==='S')){thr.value=Math.max(0,+thr.value-1);st.target=+thr.value;}
 },true);
 window.addEventListener('keyup',e=>{
   if(e.target&&e.target.tagName==='INPUT'&&e.target.type!=='range') return;

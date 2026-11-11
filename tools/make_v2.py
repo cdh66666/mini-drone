@@ -668,5 +668,23 @@ for key in ("kdz", "tz", "dzmax", "tramp"):
       else if (!strcmp(k, "%s")) g_%s = v;''' % (key, key))
     rep('''  else if (k == "angI") g_angI = v;''', '''  else if (k == "angI") g_angI = v;
   else if (k == "%s") g_%s = v;''' % (key, key))
+# ---- v15：机头锁定。18:17~18:19 的飞行里机头每次转 25~55°，方向键（按机头算）就乱了方向。
+# 空中没按偏航键时，目标偏航角速度加 −ya·(当前偏航 − 起飞时偏航)，限 ±60°/s。yawF 是同一套陀螺积分（解锁清零），符号自洽。
+rep('#define FW_VER "flight-v14"', '#define FW_VER "flight-v15"')
+rep('static float g_vh = 8.0f;', 'static float g_ya = 2.0f;     // 机头锁定：每偏 1° 往回转 g_ya °/s（0 = 关）\nstatic float g_vh = 8.0f;')
+rep('''  float spY = g_stkYaw * 120.0f;''', '''  float spY = g_stkYaw * 120.0f;
+  {
+    static float yref = 0;
+    if (thr < g_iThr || fabsf(g_stkYaw) > 0.01f || g_ya < 0.001f) yref = yawF;   // 地上 / 手动转向时跟着走
+    else {
+      float e = yawF - yref; if (e > 180) e -= 360; if (e < -180) e += 360;
+      float c = -g_ya * e; if (c > 60) c = 60; if (c < -60) c = -60;
+      spY += c;
+    }
+  }''')
+rep('''      else if (!strcmp(k, "angI")) g_angI = v;''', '''      else if (!strcmp(k, "angI")) g_angI = v;
+      else if (!strcmp(k, "ya")) g_ya = v;''')
+rep('''  else if (k == "angI") g_angI = v;''', '''  else if (k == "angI") g_angI = v;
+  else if (k == "ya") g_ya = v;''')
 open(dst, 'w', encoding='utf-8').write(t)
 print('ok')
