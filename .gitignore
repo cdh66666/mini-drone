@@ -1,0 +1,14 @@
+# 能重新生成的大文件
+firmware/build/*.merged.bin
+firmware/build/*.elf
+firmware/build/*.map
+flights/replay.json
+# 飞行录像（每段几 MB，留在本机；追踪结果 _track.csv 会提交）
+flights/video/*.mp4
+# 不公开：卖家资料包、原厂固件整片备份（只留在本机，别删）
+pack/*.zip
+backup/*.bin
+# 运行时
+__pycache__/
+*.pyc
+drone_link.log

@@ -1,0 +1,849 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>小飞机调试台</title>
+<style>
+:root{--bg:#0f1318;--card:#181e26;--line:#2a333e;--fg:#e8edf2;--dim:#8a97a6;--ok:#2fc47a;--warn:#f0b429;--bad:#ff4d4f;--acc:#3b9eff}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font:16px/1.4 "Microsoft YaHei",system-ui,sans-serif;overflow:hidden;user-select:none}
+button{font:inherit;color:inherit;cursor:pointer;border:0;border-radius:12px;background:#24303c;padding:10px 16px}
+button:disabled{opacity:.35;cursor:not-allowed}
+button:focus{outline:none}
+.app{display:grid;grid-template-rows:64px 1fr;height:100vh}
+header{display:flex;align-items:center;gap:12px;padding:0 16px;border-bottom:1px solid var(--line)}
+header .logo{font-size:26px}
+.chip{display:flex;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;background:var(--card);font-size:15px;white-space:nowrap}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--dim)}
+.dot.on{background:var(--ok)}
+.grow{flex:1}
+#estop{background:var(--bad);color:#fff;font-size:22px;font-weight:700;padding:10px 26px;border-radius:14px;box-shadow:0 0 0 3px #ff4d4f55}
+#estop small{font-size:12px;font-weight:400;opacity:.85;margin-left:6px}
+main{display:grid;grid-template-columns:96px 1fr;min-height:0}
+nav{display:flex;flex-direction:column;gap:8px;padding:12px 8px;border-right:1px solid var(--line)}
+nav button{display:flex;flex-direction:column;align-items:center;gap:2px;padding:10px 4px;background:transparent;font-size:13px;color:var(--dim);position:relative}
+nav button .i{font-size:26px}
+nav button.cur{background:var(--card);color:var(--fg)}
+nav button.done::after{content:"✓";position:absolute;top:4px;right:8px;color:var(--ok);font-size:14px}
+.stage{padding:20px 28px;min-height:0;overflow:auto;display:flex;flex-direction:column}
+.step{display:none;flex:1;flex-direction:column;gap:18px}
+.step.cur{display:flex}
+h2{margin:0;font-size:24px}
+.row{display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+.big{font-size:20px;padding:16px 30px;border-radius:14px}
+.go{background:var(--acc);color:#fff}
+.okb{background:var(--ok);color:#06210f}
+.ghost{background:transparent;border:1px solid var(--line)}
+.hint{color:var(--dim);font-size:15px}
+.card{background:var(--card);border-radius:16px;padding:18px}
+.center{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;flex:1}
+/* 气泡水平仪 */
+.level{width:240px;height:240px;border-radius:50%;background:radial-gradient(circle,#1f2833 60%,#141a21);border:2px solid var(--line);position:relative}
+.level::before,.level::after{content:"";position:absolute;background:var(--line)}
+.level::before{left:50%;top:10%;bottom:10%;width:1px}
+.level::after{top:50%;left:10%;right:10%;height:1px}
+.level .ring{position:absolute;left:50%;top:50%;width:56px;height:56px;margin:-28px;border-radius:50%;border:2px dashed #3d4a58}
+.level .bub{position:absolute;left:50%;top:50%;width:40px;height:40px;margin:-20px;border-radius:50%;background:var(--warn);transition:transform .15s linear,background .2s;box-shadow:0 0 18px #0008}
+.level .bub.ok{background:var(--ok)}
+.level .nose{position:absolute;top:-26px;left:50%;transform:translateX(-50%);color:var(--dim);font-size:14px}
+.level.sm{width:150px;height:150px;flex:none}
+.level.sm .bub{width:28px;height:28px;margin:-14px}
+.level.sm .ring{width:40px;height:40px;margin:-20px}
+.level.sm .nose{display:none}
+/* 电机图 */
+.warnbar{background:#3a1416;border:2px solid var(--bad);color:#ffd7d7;border-radius:14px;padding:14px 18px;display:flex;align-items:center;gap:14px;font-size:20px;font-weight:700}
+.warnbar .i{font-size:34px}
+.tog{display:flex;align-items:center;gap:10px;padding:12px 18px;border-radius:12px;background:var(--card);border:2px solid var(--line);font-size:17px}
+.tog.on{border-color:var(--ok);background:#12301f}
+.tog .box{width:22px;height:22px;border-radius:6px;border:2px solid var(--dim);display:grid;place-items:center;font-size:15px}
+.tog.on .box{background:var(--ok);border-color:var(--ok);color:#06210f}
+.tog.on .box::after{content:"✓"}
+.frame{width:300px;height:330px;position:relative}
+.frame svg{position:absolute;inset:0}
+.mot{position:absolute;width:96px;height:96px;margin:-48px;border-radius:50%;background:#1f2a35;border:3px solid #3d4a58;display:grid;place-items:center;font-size:30px;font-weight:700;padding:0}
+.mot:not(:disabled):hover{border-color:var(--acc)}
+.mot .arr{position:absolute;inset:6px;border-radius:50%;}
+.mot .arr svg{width:100%;height:100%}
+.mot.spin .arr{animation:cw .5s linear infinite}
+.mot.spin.ccw .arr{animation-direction:reverse}
+.mot.spin{border-color:var(--warn)}
+@keyframes cw{to{transform:rotate(360deg)}}
+/* 起飞 */
+.fly{display:grid;grid-template-columns:110px minmax(0,1fr) 220px;gap:16px;flex:1;min-height:0}
+.dim{color:var(--dim)}
+.wq{display:inline-flex;align-items:flex-end;gap:2px;height:15px;margin-right:4px}.wq i{display:block;width:4px;border-radius:1px}
+.batt{display:inline-block;width:26px;height:12px;border:2px solid #8a97a6;border-radius:3px;position:relative;margin-right:2px}
+.batt::after{content:"";position:absolute;right:-5px;top:2px;width:3px;height:4px;background:#8a97a6;border-radius:1px}
+.batt i{position:absolute;left:1px;top:1px;bottom:1px;width:0;background:var(--ok);border-radius:1px}
+#batChip{gap:8px}
+.mid{display:flex;flex-direction:column;gap:12px;min-width:0}
+.inst{flex:1;display:flex;flex-wrap:wrap;gap:14px;justify-content:space-around;align-content:center;background:var(--card);border-radius:16px;padding:16px}
+.ibox{display:flex;flex-direction:column;align-items:center;gap:6px}
+.cap{font-size:13px;color:var(--dim)}
+#liveMap{width:150px;height:150px;background:#1f2833;border:2px solid #2a333e;border-radius:50%}
+.zbar{width:8px;height:150px;background:#141a21;border-radius:4px;position:relative}
+.zbar div{position:absolute;left:0;right:0;bottom:0;height:0;background:var(--ok);border-radius:4px}
+.mrow{display:flex;align-items:center;gap:10px;background:var(--card);border-radius:12px;padding:10px 14px}
+.mrow .bar{width:60px}
+.link{color:var(--acc);cursor:pointer;font-size:14px}
+.side{display:flex;flex-direction:column;gap:12px}
+.side .tog{justify-content:center;padding:10px}
+.side #btnLand{padding:12px}
+.trim{background:var(--card);border-radius:14px;padding:10px;display:flex;flex-direction:column;gap:8px;align-items:center}
+.tpad{display:grid;grid-template-columns:repeat(3,40px);gap:6px}
+.tpad button{padding:0;height:36px;border-radius:9px}
+.tpad .tc{display:grid;place-items:center;color:var(--dim)}
+.tk{font-size:13px;color:var(--dim)}
+.tk input{width:44px;font:inherit;text-align:center;border-radius:8px;border:1px solid var(--line);background:#0f1318;color:var(--fg)}
+.thr{display:flex;flex-direction:column;align-items:center;gap:10px;background:var(--card);border-radius:16px;padding:14px 0}
+.thr .pct{font-size:30px;font-weight:700}
+#thr{writing-mode:vertical-lr;direction:rtl;width:70px;flex:1;accent-color:var(--acc);cursor:pointer}
+.bars{display:grid;grid-template-columns:repeat(2,64px);gap:10px 40px}
+.bar{height:16px;border-radius:8px;background:#26313c;overflow:hidden;position:relative}
+.bar i{position:absolute;left:0;top:0;bottom:0;background:var(--acc);width:0}
+.bar b{position:absolute;inset:0;text-align:center;font-size:11px;line-height:16px;font-weight:400}
+#arm{font-size:22px;padding:18px 0;width:100%}
+#arm.armed{background:var(--warn);color:#2a1d00}
+.keys{display:grid;grid-template-columns:repeat(3,40px);gap:6px;justify-content:center}
+.key{height:40px;border-radius:8px;background:#26313c;display:grid;place-items:center;font-size:18px;border-bottom:3px solid #11161c}
+.key.on{background:var(--acc)}
+.checks{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.checks .tog{font-size:15px;padding:10px 12px}
+/* 手感 */
+.slide{display:grid;grid-template-columns:110px 1fr 110px;align-items:center;gap:14px;font-size:20px}
+.slide span{text-align:center}
+.slide input{width:100%;accent-color:var(--acc);height:30px}
+.tips{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.tips div{background:#1f2833;border-radius:12px;padding:12px 14px;font-size:15px}
+#toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);background:#000c;padding:12px 22px;border-radius:12px;font-size:17px;opacity:0;transition:opacity .2s;pointer-events:none;max-width:80vw;text-align:center}
+#toast.show{opacity:1}
+#toast.e{background:#7a1214}
+.flash{animation:fl .5s}
+@keyframes fl{0%{background:var(--bad)}100%{}}
+</style>
+</head>
+<body>
+<div class="app">
+<header>
+  <span class="logo">🚁</span>
+  <span class="chip"><span class="dot" id="cdot"></span><span id="ctext">未连接</span></span>
+  <span class="chip" id="mode" style="display:none"></span>
+  <span class="chip" id="batChip" title="电池"><span class="batt"><i id="batFill"></i></span><b id="batPct">--</b><span class="dim" id="vb"></span><span id="chg" class="dim"></span></span>
+  <span class="chip" id="fchip" style="display:none;background:#3a1416"></span>
+  <span class="grow"></span>
+  <button id="estop">⏹ 急停<small>空格</small></button>
+</header>
+<main>
+<nav id="nav">
+  <button data-s="0"><span class="i">🔌</span>连接</button>
+  <button data-s="1"><span class="i">📐</span>校准</button>
+  <button data-s="2"><span class="i">⚙️</span>电机</button>
+  <button data-s="3"><span class="i">🛫</span>飞行</button>
+  <button data-s="4" style="display:none"><span class="i">🎚️</span>手感</button>
+</nav>
+<div class="stage">
+
+<!-- 1 连接 -->
+<section class="step" data-s="0">
+  <div class="center">
+    <div style="font-size:90px">🔌</div>
+    <button class="big go" id="btnConn">连接飞机</button>
+    <div class="hint" id="connHint">🔌 插 USB 就行；飞机连过 WiFi 后不用插线</div>
+    <div class="row" id="netBox" style="display:none;align-items:flex-start;gap:16px">
+      <div class="card" style="width:380px;display:flex;flex-direction:column;gap:10px">
+        <div class="row" style="justify-content:space-between"><b>📶 飞机连 WiFi</b><span class="hint" id="netSt">--</span></div>
+        <button class="ghost" id="btnScan">🔍 找 WiFi</button>
+        <div id="scanList" style="display:flex;flex-direction:column;gap:6px;max-height:220px;overflow:auto"></div>
+        <div class="row" id="pwRow" style="display:none;gap:8px">
+          <input id="pw" type="password" placeholder="密码" style="flex:1;font:inherit;padding:10px;border-radius:10px;border:1px solid var(--line);background:#0f1318;color:var(--fg)">
+          <button class="go" id="btnJoin">连上</button>
+        </div>
+        <div class="hint" style="font-size:13px">只能连 2.4G。列表里没有你的 WiFi → 电脑开“移动热点”（2.4GHz）再找</div>
+      </div>
+      <div class="card" style="width:240px;display:flex;flex-direction:column;gap:10px">
+        <b>⬆ 固件</b>
+        <div class="hint" id="fwInfo">--</div>
+        <button class="ghost" id="btnFlash">更新固件</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 2 放平校准 -->
+<section class="step" data-s="1">
+  <h2>放平 → 校准</h2>
+  <div class="center">
+    <div class="level" id="lv1"><span class="nose">▲ 机头</span><div class="ring"></div><div class="bub" id="bub1"></div></div>
+    <div class="hint" id="angTxt">--</div>
+    <div class="row">
+      <button class="big go" id="btnCal">📐 校准水平</button>
+      <button class="big ghost" id="btnDir">🖐 方向检查</button>
+      <button class="big okb" id="next1">下一步 →</button>
+    </div>
+    <div class="hint">放在平桌上别碰它，点校准。抬机头 → 气泡往 ▲ 跑。</div>
+  </div>
+</section>
+
+<!-- 3 电机 -->
+<section class="step" data-s="2">
+  <div class="warnbar"><span class="i">⚠️</span>先把 4 个桨全拆掉！</div>
+  <div class="row" style="align-items:flex-start;gap:30px">
+    <div class="frame">
+      <svg viewBox="0 0 300 330">
+        <line x1="70" y1="85" x2="230" y2="245" stroke="#3d4a58" stroke-width="12" stroke-linecap="round"/>
+        <line x1="230" y1="85" x2="70" y2="245" stroke="#3d4a58" stroke-width="12" stroke-linecap="round"/>
+        <rect x="120" y="135" width="60" height="60" rx="10" fill="#26313c"/>
+        <text x="150" y="20" fill="#8a97a6" font-size="15" text-anchor="middle">▲ 机头</text>
+        <text x="150" y="320" fill="#8a97a6" font-size="14" text-anchor="middle">🔌 USB 在尾巴</text>
+      </svg>
+      <button class="mot ccw" data-m="1" style="left:70px;top:85px"><span class="arr"></span>1</button>
+      <button class="mot" data-m="2" style="left:230px;top:85px"><span class="arr"></span>2</button>
+      <button class="mot" data-m="3" style="left:70px;top:245px"><span class="arr"></span>3</button>
+      <button class="mot ccw" data-m="4" style="left:230px;top:245px"><span class="arr"></span>4</button>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:14px;flex:1;min-width:260px">
+      <div class="tog" id="tgNoProp"><span class="box"></span>✂️ 桨已拆</div>
+      <div class="card" style="display:flex;flex-direction:column;gap:10px">
+        <div>① 点 1 → 2 → 3 → 4，每个转 1.5 秒</div>
+        <div>② 看实物转向跟图上箭头一样吗？</div>
+        <div class="hint">反了 → 对调这个电机的两根线（软件改不了）</div>
+      </div>
+      <div class="row">
+        <button class="ghost" id="btnAll">四个一起 1.5 秒</button>
+        <button class="big okb" id="next2">都对 →</button>
+      </div>
+      <div class="card" style="display:none;flex-direction:column;gap:8px">
+        <button class="go" id="btnYaw">🌀 防自转检查</button>
+        <div class="hint" style="font-size:13px">桨装着、放桌上、手离开 → 点一下（1、2 号各轻转 0.7 秒，不会飞）</div>
+        <div class="hint" id="yawSt"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 4 飞行 -->
+<section class="step" data-s="3">
+  <div class="fly">
+    <div class="thr">
+      <div class="pct" id="thrPct">0%</div>
+      <input type="range" id="thr" min="0" max="100" step="1" value="0">
+      <div class="tk">⏎ <input id="tkoff" type="number" min="20" max="90" step="1">%</div>
+    </div>
+
+    <div class="mid">
+      <div class="inst">
+        <div class="ibox">
+          <div class="level sm"><div class="ring"></div><div class="bub" id="bub2"></div></div>
+          <div class="cap">姿态</div>
+        </div>
+        <div class="ibox">
+          <svg viewBox="-50 -50 100 100" width="150" height="150"><circle r="47" fill="#1f2833" stroke="#2a333e" stroke-width="2"/>
+            <text y="-34" fill="#8a97a6" font-size="9" text-anchor="middle">机头</text>
+            <g id="yawNeedle"><path d="M0 -38 L8 2 L0 -6 L-8 2 Z" fill="#3b9eff"/></g></svg>
+          <div class="cap" id="yawTxt">偏航 --</div>
+        </div>
+        <div class="ibox">
+          <div style="display:flex;gap:6px;align-items:flex-end">
+            <canvas id="liveMap" width="300" height="300"></canvas>
+            <div class="zbar"><div id="liveZ"></div></div>
+          </div>
+          <div class="cap" id="liveTxt">轨迹（估）</div>
+        </div>
+      </div>
+      <div class="mrow">
+        <span class="dim">电机</span>
+        <div class="bar"><i id="o1"></i><b>1</b></div><div class="bar"><i id="o2"></i><b>2</b></div>
+        <div class="bar"><i id="o3"></i><b>3</b></div><div class="bar"><i id="o4"></i><b>4</b></div>
+        <span class="grow"></span>
+        <a class="link" id="btnHist">▶ 历史回放</a>
+      </div>
+    </div>
+
+    <div class="side">
+      <div class="tog" id="confirm"><span class="box"></span>安全确认</div>
+      <button class="okb" id="arm">🔓 解锁</button>
+      <button class="ghost" id="btnLand">⬇ 降落</button>
+      <div class="trim">
+        <div class="cap">配平 <span class="dim" id="trimTxt">--</span></div>
+        <div class="tpad">
+          <span></span><button data-t="P,1">▲</button><span></span>
+          <button data-t="R,-1">◀</button><span class="tc">✥</span><button data-t="R,1">▶</button>
+          <span></span><button data-t="P,-1">▼</button><span></span>
+        </div>
+        <div class="dim" style="font-size:12px;text-align:center">总往哪飘，就点反方向</div>
+      </div>
+      <div class="keys" style="display:none"><span class="key" id="kU"></span><span class="key" id="kL"></span><span class="key" id="kD"></span><span class="key" id="kR"></span></div>
+      <div class="dim" style="font-size:12px;text-align:center">⏎ 起飞 · 空格 急停 · 方向键 扶正</div>
+    </div>
+  </div>
+</section>
+
+<!-- 5 手感 -->
+<section class="step" data-s="4">
+  <h2>飞得不舒服？拖一下，自动保存</h2>
+  <div class="card" style="display:flex;flex-direction:column;gap:26px;padding:26px">
+    <div class="slide"><span>🐢 稳</span><input type="range" id="sA" min="-4" max="4" step="1" value="0"><span>灵 🐇</span></div>
+    <div class="slide"><span>〰️ 抖</span><input type="range" id="sB" min="-4" max="4" step="1" value="0"><span>晃 🌊</span></div>
+  </div>
+  <div class="tips">
+    <div>🫨 反应太猛、一碰就窜 → 往 <b>🐢</b></div>
+    <div>🐌 软趴趴、扶不正 → 往 <b>🐇</b></div>
+    <div>〰️ 嗡嗡高频抖 → 往 <b>〰️</b></div>
+    <div>🌊 来回晃、停不下来 → 往 <b>🌊</b></div>
+  </div>
+  <div class="row">
+    <button class="ghost" id="btnDef">↺ 恢复默认</button>
+    <button class="ghost" id="btnOrig">↩ 原参数</button>
+    <span class="hint" id="saved"></span>
+  </div>
+  <div class="hint" style="font-size:13px" id="pidTxt"></div>
+</section>
+
+</div>
+</main>
+</div>
+<div id="toast"></div>
+
+<script>
+(function(){
+'use strict';
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+const MOCK=/[?&]mock/.test(location.search);
+
+/* ---------------- 默认参数（资料包 flight_v1 默认那组） ---------------- */
+const BASE={angP:6.0,rp:3.0,ri:0.15,rd:0.06,pp:3.0,pi:0.15,pd:0.06,yp:0,idle:0,mthr:700,iThr:250};
+if(/^https?:$/.test(location.protocol)) fetch('/api/tune').then(r=>r.json()).then(j=>{Object.assign(BASE,j);}).catch(()=>{});
+function calcPid(a,b){
+  const s=1+0.1*a;            // 稳 ↔ 灵：0.6 ~ 1.4
+  const d=1-0.15*b;           // 抖 ↔ 晃：抖往左 D 小，晃往右 D 大
+  const r=x=>Math.round(x*1000)/1000;
+  return {angP:r(BASE.angP*s),rp:r(BASE.rp*s),pp:r(BASE.pp*s),
+          rd:r(BASE.rd*s*(2-d)),pd:r(BASE.pd*s*(2-d)),ri:BASE.ri,pi:BASE.pi,
+          yp:BASE.yp,idle:BASE.idle,mthr:BASE.mthr,iThr:BASE.iThr};
+}
+function lsGet(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v);}catch(e){return d;}}
+function lsSet(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}}
+
+/* ---------------- 提示 ---------------- */
+let tt=0;
+function toast(t,err){const el=$('#toast');el.textContent=t;el.className='show'+(err?' e':'');clearTimeout(tt);tt=setTimeout(()=>el.className='',2600);}
+
+/* ---------------- 串口 ---------------- */
+const S={port:null,rd:null,wq:Promise.resolve(),on:false,last:0};
+const enc=new TextEncoder();
+function send(line){
+  if(!S.on) return;
+  if(MOCK){ mock.cmd(line); return; }
+  if(SRV){ srv.q.push(line); srv.flush(); return; }
+  S.wq=S.wq.then(async()=>{
+    try{const w=S.port.writable.getWriter();await w.write(enc.encode(line+'\n'));w.releaseLock();}catch(e){}
+  });
+}
+async function connect(){
+  if(MOCK){ S.on=true; mock.start(); afterConnect(); return; }
+  if(SRV){ return srv.connect(); }
+  if(!('serial' in navigator)){ toast('请用 Edge 或 Chrome 打开这个页面',1); return; }
+  try{
+    S.port=await navigator.serial.requestPort({filters:[{usbVendorId:0x303A}]});
+    await S.port.open({baudRate:115200});
+  }catch(e){ toast('没连上：'+(e.message||e),1); return; }
+  S.on=true; readLoop(); afterConnect();
+}
+async function readLoop(){
+  let buf='';const dec=new TextDecoder();
+  while(S.on&&S.port&&S.port.readable){
+    S.rd=S.port.readable.getReader();
+    try{for(;;){const r=await S.rd.read();if(r.done)break;buf+=dec.decode(r.value,{stream:true});
+      let i;while((i=buf.indexOf('\n'))>=0){const l=buf.slice(0,i).replace(/\r$/,'');buf=buf.slice(i+1);if(l)onLine(l);}
+    }}catch(e){}
+    try{S.rd.releaseLock();}catch(e){}
+    if(S.on){ lost(); break; }
+  }
+}
+function lost(){ S.on=false; setConn(false); armedUI(false); toast('连接断了，自动重连中…',1); go(0); }
+navigator.serial&&navigator.serial.addEventListener&&navigator.serial.addEventListener('disconnect',()=>{ if(S.on) lost(); });
+
+/* ---------------- 本地服务（drone_server.py：USB 或 WiFi，侧栏也能用） ---------------- */
+const SRV=!MOCK&&/^https?:$/.test(location.protocol);
+const srv={q:[],busy:false,since:0,mode:'',
+  cbusy:false,
+  async connect(quiet){
+    if(this.cbusy||S.on)return; this.cbusy=true;
+    const b=$('#btnConn');b.disabled=true;b.textContent='⏳ 找飞机…';
+    let j=null;try{j=await (await fetch('/api/link?mode=auto')).json();}catch(e){}
+    b.disabled=false;b.textContent='连接飞机';this.cbusy=false;
+    if(!j||!j.ok){ if(!quiet) toast('没找到飞机：开机等几秒，会自动连',1); $('#connHint').textContent='⏳ 自动找飞机中…（开机就行）'; return;}
+    this.mode=j.mode;$('#mode').innerHTML=j.mode==='wifi'?wifiHTML(4):'🔌 USB';$('#mode').style.display='';
+    try{const p=await (await fetch('/api/poll?since=0')).json();this.since=p.n;}catch(e){}
+    S.on=true;this.poll();afterConnect();
+  },
+  async poll(){
+    while(S.on){
+      try{const p=await (await fetch('/api/poll?since='+this.since)).json();this.since=p.n;p.lines.forEach(onLine);}
+      catch(e){ lost(); break; }
+      await new Promise(r=>setTimeout(r,60));
+    }
+  },
+  async flush(){
+    if(this.busy||!this.q.length)return;this.busy=true;
+    const body=this.q.splice(0).join(String.fromCharCode(10));
+    try{await fetch('/api/send',{method:'POST',body});}catch(e){}
+    this.busy=false;if(this.q.length)this.flush();
+  }
+};
+
+/* ---------------- 飞机连 WiFi / 更新固件 ---------------- */
+function hexOf(s){return [...new TextEncoder().encode(s)].map(b=>b.toString(16).padStart(2,'0')).join('').toUpperCase();}
+function strOf(h){const b=new Uint8Array((h.match(/../g)||[]).map(x=>parseInt(x,16)));return new TextDecoder().decode(b);}
+let pickSsid='';const seen={};
+function netPanel(){
+  const usb=!SRV||srv.mode!=='wifi';
+  $('#netBox').style.display=SRV?'':'none';
+  $('#btnScan').disabled=!usb;$('#btnScan').textContent=usb?'🔍 找 WiFi':'🔍 找 WiFi（要插 USB）';
+  if(usb) send('N?'); else $('#netSt').textContent='✓ 无线连接中';
+  if(SRV) fetch('/api/fwinfo').then(r=>r.json()).then(j=>{$('#fwInfo').textContent=j.fw?(j.fw.replace('.ino.bin','')+' · '+j.time):'没有固件';}).catch(()=>{});
+}
+function netShow(l){
+  const a=l.split(',');const el=$('#netSt');
+  if(a[1]==='ok'){
+    el.textContent='⏳ 已连 '+a[3]+'，测电脑能否连到…';
+    if(SRV) fetch('/api/probe?ip='+a[3]).then(r=>r.json()).then(j=>{
+      if(j.ok){el.textContent='✓ '+a[3]+' 无线可用';toast('飞机连上 WiFi ✓ 以后拔掉 USB 也能连');}
+      else{el.textContent='✗ 电脑连不到它，换一个 WiFi';toast('飞机连上了，但电脑连不到它：换一个 WiFi，或电脑开移动热点',1);}
+    }).catch(()=>{});
+  }
+  else if(a[1]==='wait') el.textContent='⏳ 连接中…'; else el.textContent='未设置';
+}
+function bars(r){return r>-55?'▂▄▆█':r>-67?'▂▄▆':r>-78?'▂▄':'▂';}
+function scanLine(l){
+  const a=l.split(',');const box=$('#scanList');
+  if(a[1]==='end'){$('#btnScan').disabled=false;$('#btnScan').textContent='🔍 再找一次';if(!box.children.length)box.innerHTML='<div class="hint">没找到</div>';return;}
+  const name=strOf(a[4]||'');if(!name||seen[name])return;seen[name]=1;
+  const b=document.createElement('button');b.className='ghost';b.style.textAlign='left';
+  b.textContent=bars(+a[1])+'  '+name+(a[3]==='0'?'':'  🔒');
+  b.onclick=()=>{pickSsid=name;$$('#scanList button').forEach(x=>x.style.borderColor='');b.style.borderColor='var(--acc)';$('#pwRow').style.display='';$('#pw').value='';$('#pw').focus();};
+  box.appendChild(b);
+}
+$('#btnScan').addEventListener('click',()=>{for(const k in seen)delete seen[k];$('#scanList').innerHTML='';$('#btnScan').disabled=true;$('#btnScan').textContent='⏳ 找…';send('NS');});
+$('#btnJoin').addEventListener('click',()=>{ if(!pickSsid)return; send('N,'+hexOf(pickSsid)+','+hexOf($('#pw').value)); $('#pw').value=''; $('#pwRow').style.display='none'; });
+$('#btnFlash').addEventListener('click',async()=>{
+  if(st.armed){toast('先上锁',1);return;}
+  const b=$('#btnFlash');b.disabled=true;b.textContent='⏳ 更新中，别拔…';
+  let j=null;try{j=await (await fetch('/api/flash')).json();}catch(e){}
+  b.disabled=false;b.textContent='更新固件';
+  S.on=false;setConn(false);armedUI(false);
+  if(j&&j.ok){toast('固件更新好了 ✓ 等 5 秒再点连接');}else toast('没更新成功：'+((j&&j.why)||'').slice(0,80),1);
+});
+
+/* ---------------- 飞机状态 ---------------- */
+const D={vb:0,usb:false,out:[0,0,0,0],arm:false,f:0,roll:0,pitch:0,seen:0,ver:''};
+function onLine(l){
+  S.last=Date.now();
+  if(l.charCodeAt(0)===68&&l[1]===','){            // D 帧
+    const a=l.split(',');if(a.length<16)return;
+    D.vb=+a[2];D.usb=a[3]==='0';D.out=[+a[10],+a[11],+a[12],+a[13]];D.ax=+a[4];D.ay=+a[5];D.az=+a[6];
+    const arm=a[14]==='1';D.f=+a[15];D.seen=Date.now();
+    if(st.armed&&!arm){ armedUI(false); const why=faultTxt(D.f); toast(why?('已停：'+why):'已上锁',!!why); }
+    D.arm=arm; return;
+  }
+  if(l.startsWith('#DBG,')){
+    const m={};l.slice(5).split(',').forEach(kv=>{const p=kv.split('=');m[p[0]]=+p[1];});
+    D.roll=m.roll||0;D.pitch=m.pitch||0;if(m.yaw!=null){D.yaw=m.yaw;D.gy=m.gy;}liveStep();return;
+  }
+  if(l.startsWith('#LINK,lost')){ if(S.on) lost(); return; }
+  if(l.startsWith('#VER,')){D.ver=l.split(',')[1];return;}
+  if(l.startsWith('#NOTE,')){ toast(l.slice(6)); return; }
+  if(l.startsWith('#BB,saved')){ toast('📦 这次飞行已记录'); return; }
+  if(l.startsWith('#LQ,')){ const a=l.split(','),loss=+a[1],rssi=+a[3],gap=+a[4];
+    let q=rssi>-60?4:rssi>-70?3:rssi>-80?2:1; if(loss>10||gap>300)q=Math.min(q,2); if(loss>30||gap>600)q=1;
+    wifiQ(q,rssi,loss); return; }
+  if(l.startsWith('#NET,')){netShow(l);return;}
+  if(l.startsWith('#SCAN,')){scanLine(l);return;}
+  if(l.startsWith('#ACK,NET')){$('#netSt').textContent='⏳ 连接中…';return;}
+  if(l.startsWith('#BOOT')){toast('飞机重启了');setTimeout(backupThenPush,800);return;}
+  if(l.startsWith('#ACK,ARM')){armedUI(true);return;}
+  if(l.startsWith('#ACK,LEVEL')){calDone(true);return;}
+  if(l.startsWith('#ERR,ARM_FAIL,')){toast('解锁不了：'+l.slice(14),1);armedUI(false);return;}
+  if(l.startsWith('#ERR,ZERO_FAIL')){calDone(false);return;}
+  if(l.startsWith('#PARAMS,')){try{gotParams(JSON.parse(l.slice(8)));}catch(e){}return;}
+  if(l.startsWith('#ACK,SAVE')){$('#saved').textContent='✓ 已存到飞机';return;}
+}
+function faultTxt(f){
+  const t=[];if(f&1)t.push('传感器异常');if(f&2)t.push('信号断了');if(f&4)t.push('倾斜太大');if(f&8)t.push('电池低');return t.join('、');
+}
+
+/* ---------------- 连接后 ---------------- */
+function setConn(on){$('#cdot').classList.toggle('on',on);$('#ctext').textContent=on?'已连接':'未连接';}
+function afterConnect(){
+  setConn(true); send('V'); markDone(0); netPanel();
+  backupThenPush();
+  toast('连上了 ✓'); go(lsGet('fly.ready',false)?3:1);
+}
+let pushT=0;
+/* 先备份飞机里原来的参数，再写默认值。备份不到就只改内存、绝不存盘 */
+let canSave=false,bakWait=0;
+function backupThenPush(){
+  canSave=false;let n=0;
+  const ask=()=>{ if(canSave)return; if(++n>3){ $('#saved').textContent='原参数读不到：只改内存，不存盘'; pushParams(); return; } send('C'); bakWait=setTimeout(ask,700); };
+  ask();
+}
+let curP=null;
+function gotParams(j){
+  if(j&&typeof j.angP==='number') curP=j;
+  if(canSave||typeof j.angP!=='number')return;
+  clearTimeout(bakWait);
+  const bak={time:new Date().toISOString(),params:j};
+  if(!lsGet('fly.backup',null)) lsSet('fly.backup',bak);   // 只留第一份（最原始的）
+  canSave=true; toast('原参数已备份 ✓'); pushParams();
+}
+function saveIfSafe(){ if(canSave) send('W'); }
+$('#btnOrig').addEventListener('click',()=>{
+  if(!S.on){toast('先连接',1);return;}
+  const b=lsGet('fly.backup',null);
+  if(b&&b.params){ const j=b.params; ['angP','rp','ri','rd','pp','pi','pd','yp','idle','mthr'].forEach(k=>{ if(typeof j[k]==='number') send('E,'+k+','+j[k]); }); saveIfSafe(); toast('已恢复原参数'); }
+  else { send('U'); toast('已从飞机存储重新读取；不行就重新上电'); }
+});
+function pushParams(save){
+  const p=calcPid(+$('#sA').value,+$('#sB').value);
+  delete p.yp; delete p.yi;   // 偏航由飞控自己定：空中测一次方向，测准后自己打开并保存
+  ['angP','rp','ri','rd','pp','pi','pd','yp','yi','idle','mthr','iThr'].forEach(k=>{ if(p[k]!=null) send('E,'+k+','+p[k]); });
+  saveIfSafe();
+  if(!canSave) $('#saved').textContent='只改内存（原参数在飞机里没动）';
+  $('#pidTxt').textContent='P '+p.rp+' · I '+p.ri+' · D '+p.rd+' · 角度 '+p.angP;
+}
+
+/* 轮询：姿态回读 + 掉线判断 */
+setInterval(()=>{
+  if(!S.on)return;
+  send('P');
+  if(!MOCK&&D.seen&&Date.now()-D.seen>2500){ $('#ctext').textContent='没数据…'; }
+  else setConn(true);
+},200);
+
+/* ---------------- 界面刷新 ---------------- */
+function bub(el,r,p,k){
+  const lim=v=>Math.max(-1,Math.min(1,v/20));
+  el.style.transform='translate('+(-lim(r)*k)+'px,'+(-lim(p)*k)+'px)';
+  el.classList.toggle('ok',Math.hypot(r,p)<2);
+}
+/* ---------- 电量：1S 锂电静置电压 → 百分比；飞行中电压被拉低，只显示飞前的数 ---------- */
+const OCV=[[4.20,100],[4.15,95],[4.11,90],[4.08,85],[4.02,80],[3.98,75],[3.95,70],[3.91,65],[3.87,60],[3.85,55],[3.84,50],[3.82,45],[3.80,40],[3.79,35],[3.77,30],[3.75,25],[3.73,20],[3.71,15],[3.69,10],[3.61,5],[3.30,0]];
+function pctOf(v){ if(v>=4.2)return 100; for(let i=1;i<OCV.length;i++){const[a,pa]=OCV[i-1],[b,pb]=OCV[i]; if(v>=b) return Math.round(pb+(v-b)/(a-b)*(pa-pb));} return 0; }
+const CH={hist:[],lastPct:null};
+function batShow(){
+  const v0=D.vb/1000; if(!(v0>2.5))return;
+  // 电压先平滑（约 20 秒），再查表；百分比只往一个方向走：充电只升、放电只降（换状态时重置）
+  const nowS=Date.now()/1000, dts=CH.vt?Math.min(5,nowS-CH.vt):0; CH.vt=nowS;
+  if(CH.vs==null||CH.usb!==D.usb){ CH.vs=v0; CH.usb=D.usb; CH.lastPct=null; }
+  else if(!st.armed) CH.vs+=(v0-CH.vs)*Math.min(1,dts/20);
+  const v=CH.vs;
+  let pct=pctOf(D.usb?v-0.06:v);   // 充电时端电压虚高（189 mA × 内阻 ≈ 0.05 V）
+  if(CH.lastPct!=null){ pct = st.armed ? CH.lastPct : (D.usb ? Math.max(pct,CH.lastPct) : Math.min(pct,CH.lastPct)); }
+  CH.lastPct=pct;
+  $('#batPct').textContent=pct+'%'; $('#vb').textContent=v.toFixed(2)+' V';
+  const f=$('#batFill'); f.style.width=(pct*0.22)+'px'; f.style.background=pct<20?'var(--bad)':pct<40?'var(--warn)':'var(--ok)';
+  // 充电预计：记最近 10 分钟的电压，按上升速度推到 4.15 V，再加 10 分钟恒压收尾
+  const now=Date.now()/1000;
+  // 历史存 localStorage：刷新页面不用重新等；拔线超过 30 秒才清空
+  if(!CH.loaded){ CH.loaded=1; try{ const o=JSON.parse(localStorage.getItem('chgHist')||'[]'); if(o.length&&now-o[o.length-1][0]<120) CH.hist=o.filter((p,i)=>!i||p[0]-o[i-1][0]>=0.9); }catch(e){} }
+  if(D.usb){ CH.offAt=0; const lt=CH.hist.length?CH.hist[CH.hist.length-1][0]:0; if(now-lt>=1) CH.hist.push([now,v]); while(CH.hist.length&&now-CH.hist[0][0]>600) CH.hist.shift();
+    if(!CH.saveT||now-CH.saveT>5){ CH.saveT=now; try{ localStorage.setItem('chgHist',JSON.stringify(CH.hist)); }catch(e){} } }
+  else { if(!CH.offAt) CH.offAt=now; if(now-CH.offAt>30){ CH.hist=[]; try{ localStorage.removeItem('chgHist'); }catch(e){} } }
+  let s='';
+  if(D.usb){
+    if(v>=4.17) s='⚡ 快满了';
+    else if(CH.hist.length>20&&now-CH.hist[0][0]>120){
+      const h=CH.hist,n=h.length;let sx=0,sy=0,sxx=0,sxy=0;h.forEach(([x,y])=>{x-=h[0][0];sx+=x;sy+=y;sxx+=x*x;sxy+=x*y;});
+      const k=(n*sxy-sx*sy)/(n*sxx-sx*sx);   // V/s
+      if(k>0.000005){ const min=Math.round((4.15-v)/k/60+10); s='⚡ 约 '+(min>90?Math.round(min/6)/10+' 小时':min+' 分钟')+'充满'; }
+      else s='⚡ 充电中';
+    } else { const min=Math.round((100-pct)*1.2); s='⚡ 约 '+(min>90?Math.round(min/6)/10+' 小时':min+' 分钟')+'充满'; }   // 数据还不够：按约 2 小时充满粗估
+  } else if(!st.armed&&v<3.6) s='⚠ 该充电了';
+  $('#chg').textContent=s;
+}
+function wifiHTML(q){ return '<span class="wq">'+[1,2,3,4].map(i=>'<i style="height:'+(3+i*3)+'px;background:'+(i<=q?(q>=3?'var(--ok)':q==2?'var(--warn)':'var(--bad)'):'#3d4a58')+'"></i>').join('')+'</span> WiFi'; }
+function wifiQ(q,rssi,loss){ const m=$('#mode'); if(srv.mode!=='wifi')return; m.innerHTML=wifiHTML(q); m.title='信号 '+rssi+' dBm · 丢包 '+loss+'%'; }
+
+/* ---------- 配平：点一下 0.5°，马上生效并存进飞机 ---------- */
+function trimShow(){ if(!curP){$('#trimTxt').textContent='--';return;}
+  const r=curP.trimR||0,p=curP.trimP||0; $('#trimTxt').textContent='前后 '+p.toFixed(1)+'° · 左右 '+r.toFixed(1)+'°'; }
+document.querySelectorAll('.tpad button').forEach(b=>b.addEventListener('click',()=>{
+  if(!S.on){toast('先连接',1);return;} if(!curP){send('C');toast('读参数中，再点一次');return;}
+  const [ax,dir]=b.dataset.t.split(','),k=ax==='P'?'trimP':'trimR';
+  curP[k]=Math.round(((curP[k]||0)+0.5*(+dir))*100)/100;
+  send('E,'+k+','+curP[k]); saveIfSafe(); trimShow();
+  toast((ax==='P'?(+dir>0?'往前':'往后'):(+dir>0?'往右':'往左'))+' 0.5° ✓');
+}));
+setInterval(trimShow,1000);
+
+function frame(){
+  if(D.seen){
+    batShow();
+    const ft=faultTxt(D.f);const fc=$('#fchip');fc.style.display=ft?'':'none';fc.textContent='⚠ '+ft;
+    bub($('#bub1'),D.roll,D.pitch,90);bub($('#bub2'),D.roll,D.pitch,55);
+    if(!dirOn) $('#angTxt').textContent=(Math.hypot(D.roll,D.pitch)<2?'✓ 平了':'歪 '+Math.hypot(D.roll,D.pitch).toFixed(1)+'°');
+    for(let i=0;i<4;i++){const w=Math.min(100,D.out[i]/7);$('#o'+(i+1)).style.width=w+'%';}
+    if(D.yaw!=null){ $('#yawNeedle').setAttribute('transform','rotate('+(+D.yaw)+')');
+      const spin=Math.abs(+D.gy||0); $('#yawTxt').textContent='偏航 '+Math.round(D.yaw)+'° · 自转 '+Math.round(+D.gy||0)+'°/s';
+      $('#yawTxt').style.color=spin>60?'var(--bad)':''; }
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+/* ---------------- 步骤 ---------------- */
+let cur=0;
+function go(n){cur=n;$$('nav button').forEach(b=>b.classList.toggle('cur',+b.dataset.s===n));$$('.step').forEach(s=>s.classList.toggle('cur',+s.dataset.s===n));}
+function markDone(n){const b=$('nav button[data-s="'+n+'"]');b&&b.classList.add('done');}
+$$('nav button').forEach(b=>b.addEventListener('click',()=>{ if(st.armed&&+b.dataset.s!==3){toast('先降落上锁',1);return;} go(+b.dataset.s); }));
+go(0);
+// 自动连接：打开页面就连，没连上每 3 秒再试（不弹提示）
+if(SRV){ setTimeout(()=>srv.connect(true),300); setInterval(()=>{ if(!S.on) srv.connect(true); },3000); }
+
+$('#btnConn').addEventListener('click',()=>connect());
+$('#next1').addEventListener('click',()=>{markDone(1);go(2);});
+$('#next2').addEventListener('click',()=>{markDone(2);go(3);});
+
+/* 校准：陀螺零偏 → 水平归零 → 保存 */
+let calT=0;
+$('#btnCal').addEventListener('click',()=>{
+  if(!S.on){toast('先连接',1);go(0);return;}
+  const b=$('#btnCal');b.disabled=true;b.textContent='⏳ 别碰…';
+  send('R');
+  calT=setTimeout(()=>send('L'),1600);
+  setTimeout(()=>{ if(b.disabled){ b.disabled=false;b.textContent='📐 校准水平'; } },5000);
+});
+function calDone(ok){
+  clearTimeout(calT);const b=$('#btnCal');b.disabled=false;b.textContent='📐 校准水平';
+  if(ok){saveIfSafe();lsSet('fly.ready',true);toast('校准好了 ✓ 已存进飞机');markDone(1);}else toast('它在动，放稳再点',1);
+}
+
+/* 方向检查（v5）：用原始加速度算出传感器芯片实际转了多少度，自动写 rot / sgR / sgP。
+   约定（与混控一致）：抬 1、2 号那边 → pitch 为负；抬 1、3 号那边 → roll 为正。 */
+let dirStep=0,dirRes={},dirT=0,dirOn=false,dirBase=null;
+const DIRS=[{k:'nose',txt:'⬆ 把 1、2 号那边抬高一点'},{k:'left',txt:'⬅ 把 1、3 号那边抬高一点'}];
+function dirMsg(s){$('#angTxt').textContent=s;$('#angTxt').style.fontSize='22px';}
+$('#btnDir').addEventListener('click',()=>{
+  if(!S.on){toast('先连接',1);return;}
+  if(D.ax==null){toast('还没收到数据，等一秒再点',1);return;}
+  dirBase=[D.ax,D.ay];dirStep=0;dirRes={};dirAsk();
+});
+function dirAsk(){
+  dirOn=true;dirMsg(DIRS[dirStep].txt);
+  let hold=0,acc=[0,0],n=0;clearInterval(dirT);
+  dirT=setInterval(()=>{
+    const dx=D.ax-dirBase[0],dy=D.ay-dirBase[1],m=Math.hypot(dx,dy);
+    if(m>0.17){hold++;acc[0]+=dx;acc[1]+=dy;n++;} else {hold=0;acc=[0,0];n=0;}
+    if(hold>=5){ clearInterval(dirT);
+      dirRes[DIRS[dirStep].k]=[acc[0]/n,acc[1]/n];
+      dirMsg('✓ 放下');
+      setTimeout(()=>{ if(++dirStep<DIRS.length){ dirBase=[D.ax,D.ay]; dirAsk(); } else dirDone(); },1800);
+    }
+  },120);
+}
+function wrap(a){while(a>180)a-=360;while(a<-180)a+=360;return a;}
+function dirDone(){
+  dirOn=false;$('#angTxt').style.fontSize='';
+  const F=dirRes.nose,L=dirRes.left,deg=Math.PI/180;
+  const aF=Math.atan2(F[1],F[0])/deg,aL=Math.atan2(L[1],L[0])/deg;
+  const sep=Math.abs(wrap(aF-aL));
+  if(sep<55||sep>125){ toast('两次抬的方向太接近，再测一次（抬一整条边）',1); return; }
+  const tL=wrap(90-aL);
+  const opts=[{sgP:1,t:wrap(-aF)},{sgP:-1,t:wrap(180-aF)}].map(o=>({...o,d:Math.abs(wrap(o.t-tL))}));
+  opts.sort((x,y)=>x.d-y.d);const o=opts[0];
+  if(o.d>35){ toast('没测准，再测一次',1); return; }
+  let rot=Math.round(wrap(tL+wrap(o.t-tL)/2));
+  const r90=Math.round(rot/90)*90; if(Math.abs(rot-r90)<25) rot=wrap(r90);   // 芯片焊在板上，基本是 90° 的整数倍；手抬有 ±10° 误差
+  send('E,rot,'+rot);send('E,sgR,1');send('E,sgP,'+o.sgP);send('E,trimR,0');send('E,trimP,0');
+  saveIfSafe();
+  try{ fetch('/api/note?t='+encodeURIComponent('dir F='+F.map(v=>v.toFixed(3))+' L='+L.map(v=>v.toFixed(3))+' rot='+rot+' sgP='+o.sgP)); }catch(e){}
+  toast('芯片转了 '+rot+'°，已改好 ✓ 放平后点“校准水平”');
+  $('#angTxt').textContent='转 '+rot+'° ✓';
+}
+
+/* 防自转方向：点动 M1 时机身应被扭向“正”，M2 应为“负”（与混控 oY 一致）；反了就翻 sgY */
+/* 防自转方向：电机加速时机身被反扭。按混控约定 M1、M4 应扭向“正”，M2、M3 扭向“负”。
+   s = m1 - m2 - m3 + m4：明显为正 → 方向对；明显为负 → 翻 sgY；太小 → 没测出来（不开防自转）。 */
+async function yawCheck(){
+  const s=$('#yawSt');s.textContent='⏳ 防自转检查：1~4 号各轻转 0.5 秒…';toast('🌀 防自转检查中，别碰');
+  let j=null;try{j=await (await fetch('/api/yawtest?pm=270&ms=500')).json();}catch(e){}
+  lsSet('fly.yawTried',true);
+  if(!j||j.err||j.m1==null){s.textContent='✗ 没测成';return false;}
+  const sc=j.m1-j.m2-(j.m3||0)+(j.m4||0);
+  if(Math.abs(sc)<1.0){s.textContent='✗ 没测出来（'+sc.toFixed(1)+'）';toast('防自转没测出来，先不开',1);return false;}
+  if(sc<0){ send('E,sgY,'+(-j.sgY)); saveIfSafe(); }
+  lsSet('fly.yawOK',true); pushParams();
+  s.textContent='✓ 防自转已打开'; toast('🌀 防自转已打开 ✓'); return true;
+}
+$('#btnYaw').addEventListener('click',()=>{
+  if(!S.on||!SRV){toast('先连接',1);return;}
+  if(st.armed){toast('先上锁',1);return;}
+  yawCheck();
+});
+
+/* 电机测试 */
+const noProp=$('#tgNoProp');let jogT=0;
+function motEnable(){const on=noProp.classList.contains('on')&&S.on&&!st.armed;$$('.mot').forEach(m=>m.disabled=!on);$('#btnAll').disabled=!on;}
+noProp.addEventListener('click',()=>{noProp.classList.toggle('on');motEnable();});
+// 箭头：顺时针图标（ccw 的用反向动画 + 镜像）
+$$('.mot .arr').forEach(a=>{
+  const ccw=a.parentElement.classList.contains('ccw');
+  a.innerHTML='<svg viewBox="0 0 84 84"'+(ccw?' style="transform:scaleX(-1)"':'')+'><path d="M42 8 A34 34 0 1 1 12 26" fill="none" stroke="#3b9eff" stroke-width="5"/><path d="M42 1 L54 9 L42 17 Z" fill="#3b9eff"/></svg>';
+});
+function jog(ch,ms){
+  if(!S.on)return;
+  $$('.mot').forEach(m=>m.classList.toggle('spin',ch===0||+m.dataset.m===ch));
+  send('J,'+ch+',200,'+ms);
+  clearTimeout(jogT);jogT=setTimeout(()=>$$('.mot').forEach(m=>m.classList.remove('spin')),ms);
+}
+$$('.mot').forEach(m=>m.addEventListener('click',()=>jog(+m.dataset.m,1500)));
+$('#btnAll').addEventListener('click',()=>jog(0,1500));
+setInterval(motEnable,500);
+
+/* ---------------- 实时推算轨迹（和回放页同一套算法：倾角 → 水平加速度，加阻力，二次积分） ---------------- */
+const LV={p:[0,0,0],v:[0,0,0],t:0,path:[]};
+function liveReset(){LV.p=[0,0,0];LV.v=[0,0,0];LV.t=0;LV.path=[[0,0]];}
+function liveStep(){
+  const now=performance.now()/1000;const dt=LV.t?Math.min(0.2,now-LV.t):0;LV.t=now;
+  if(!st.armed||!dt)return;
+  const d=Math.PI/180,g=9.81,k=1.2,r=D.roll*d,q=D.pitch*d,y=(D.yaw||0)*d;
+  const af=g*Math.tan(q),ar=g*Math.tan(r);               // 前、右
+  const ax=af*Math.cos(y)-ar*Math.sin(y),ay=af*Math.sin(y)+ar*Math.cos(y);
+  const air=(st.cmd||0)>=45;
+  let az=0; if(air&&D.az!=null) az=(D.az*Math.cos(r)*Math.cos(q)-1)*g;
+  const a=[air?ax:0,air?ay:0,az];
+  for(let i=0;i<3;i++){LV.v[i]+=(a[i]-k*LV.v[i])*dt;LV.p[i]+=LV.v[i]*dt;}
+  if(LV.p[2]<0){LV.p[2]=0;LV.v[2]=Math.max(0,LV.v[2]);}
+  if(!air){LV.v=[0,0,0];}
+  LV.path.push([LV.p[0],LV.p[1]]);if(LV.path.length>3000)LV.path.shift();
+  liveDraw();
+}
+function liveDraw(){
+  const c=$('#liveMap');if(!c)return;const g=c.getContext('2d'),W=300,H=300;g.clearRect(0,0,W,H);
+  let R=1;LV.path.forEach(p=>{R=Math.max(R,Math.abs(p[0])*1.2,Math.abs(p[1])*1.2);});
+  const X=p=>W/2+p[1]/R*W/2,Y=p=>H/2-p[0]/R*H/2;
+  g.strokeStyle='#2a333e';for(let m=-Math.floor(R);m<=Math.floor(R);m++){g.beginPath();g.moveTo(W/2+m/R*W/2,0);g.lineTo(W/2+m/R*W/2,H);g.stroke();g.beginPath();g.moveTo(0,H/2-m/R*H/2);g.lineTo(W,H/2-m/R*H/2);g.stroke();}
+  g.strokeStyle='#2fc47a';g.lineWidth=4;g.beginPath();LV.path.forEach((p,i)=>i?g.lineTo(X(p),Y(p)):g.moveTo(X(p),Y(p)));g.stroke();
+  const cur=LV.path[LV.path.length-1]||[0,0];g.fillStyle='#ff4d4f';g.beginPath();g.arc(X(cur),Y(cur),9,0,7);g.fill();
+  $('#liveZ').style.height=Math.min(100,LV.p[2]/2*100)+'%';
+  $('#liveTxt').textContent='前 '+LV.p[0].toFixed(1)+' · 右 '+LV.p[1].toFixed(1)+' · 高 '+LV.p[2].toFixed(1)+' m';
+}
+$('#btnHist').addEventListener('click',()=>{ if(st.armed){toast('先降落',1);return;} location.href='/replay.html'; });
+liveReset();
+
+/* ---------------- 飞行 ---------------- */
+const st={armed:false,cmd:0,target:0,r:0,p:0,landing:false};
+let confirmed=false;
+$('#confirm').addEventListener('click',()=>{confirmed=!confirmed;$('#confirm').classList.toggle('on',confirmed);});
+const thr=$('#thr');
+thr.addEventListener('input',()=>{st.target=+thr.value;st.landing=false;});
+const tk=$('#tkoff');tk.value=lsGet('fly.tkoff',60);
+tk.addEventListener('change',()=>{const v=Math.max(20,Math.min(90,+tk.value||60));tk.value=v;lsSet('fly.tkoff',v);tk.blur();});
+let pendingTk=false;
+function takeoffJump(){ const v=+tk.value||60; st.landing=false; st.target=v; st.cmd=v; thr.value=v; toast('⏎ 起飞 '+v+'%'); }
+function takeoff(){
+  if(!S.on||cur!==3) return;
+  if(!confirmed){toast('先点“确认”',1);$('#confirm').classList.add('flash');setTimeout(()=>$('#confirm').classList.remove('flash'),500);return;}
+  if(st.armed){ takeoffJump(); return; }
+  pendingTk=true; $('#arm').click(); setTimeout(()=>{pendingTk=false;},1500);
+}
+function armedUI(on){
+  st.armed=on;const b=$('#arm');
+  if(on&&pendingTk){ pendingTk=false; setTimeout(takeoffJump,200); }
+  if(on) liveReset();
+  b.classList.toggle('armed',on);b.classList.toggle('okb',!on);b.textContent=on?'🔒 上锁':'🔓 解锁';
+  if(!on){st.cmd=0;st.target=0;thr.value=0;st.landing=false;}
+}
+$('#arm').addEventListener('click',()=>{
+  if(!S.on){toast('先连接',1);go(0);return;}
+  if(st.armed){send('A,0');armedUI(false);return;}
+  if(!confirmed){toast('先点上面的“确认”',1);$('#confirm').classList.add('flash');setTimeout(()=>$('#confirm').classList.remove('flash'),500);return;}
+  if(+thr.value>0){toast('油门先拉到 0',1);return;}
+  send('X');send('A,1');
+});
+$('#btnLand').addEventListener('click',()=>{ if(st.armed){st.landing=true;toast('降落中…');} });
+
+/* 心跳：解锁后每 100ms 发一次油门 + 方向（固件 0.9 秒收不到会自停） */
+const keys={};
+setInterval(()=>{
+  if(!st.armed||!S.on)return;
+  if(st.landing){ st.target=Math.max(0,st.target-2.5); thr.value=Math.round(st.target); if(st.target<=0&&st.cmd<=0){ send('A,0'); armedUI(false); toast('落地 ✓'); return; } }
+  if(st.target>st.cmd) st.cmd=Math.min(st.target,st.cmd+5);   // 往上最快 50%/秒
+  else st.cmd=st.target;                                        // 往下立刻
+  const T=0.14;   // 杆量 × 最大倾角 25° ≈ 3.5°
+  st.r=(keys.ArrowRight?T:0)-(keys.ArrowLeft?T:0);
+  st.p=(keys.ArrowUp?T:0)-(keys.ArrowDown?T:0);   // sgP=-1 后：pitch+ = 1、2 号那边往下 = 往前飞
+  send('G,'+Math.round(st.cmd*10));
+  send('Q,'+st.r.toFixed(2)+','+st.p.toFixed(2)+',0');
+},100);
+setInterval(()=>{$('#thrPct').textContent=Math.round(st.armed?st.cmd:+thr.value)+'%';},100);
+
+/* ---------------- 急停 ---------------- */
+function estop(){
+  send('X');send('J,0,0,100');send('S,0');
+  armedUI(false);$$('.mot').forEach(m=>m.classList.remove('spin'));
+  document.body.classList.add('flash');setTimeout(()=>document.body.classList.remove('flash'),500);
+  toast('⏹ 已急停');
+}
+$('#estop').addEventListener('click',estop);
+window.addEventListener('blur',()=>{ if(st.armed) estop(); });
+document.addEventListener('visibilitychange',()=>{ if(document.hidden&&st.armed) estop(); });
+
+/* 键盘：空格急停；W/S 油门；方向键 */
+const KEYMAP={ArrowUp:'kU',ArrowDown:'kD',ArrowLeft:'kL',ArrowRight:'kR'};
+window.addEventListener('keydown',e=>{
+  if(e.target&&e.target.tagName==='INPUT'&&e.target.type!=='range'){ if(e.key==='Enter'&&e.target.id==='pw') $('#btnJoin').click(); return; }
+  if(e.code==='Space'){e.preventDefault();estop();return;}
+  if(KEYMAP[e.key]){e.preventDefault();keys[e.key]=true;$('#'+KEYMAP[e.key]).classList.add('on');return;}
+  if(e.key==='Enter'){e.preventDefault();if(cur===3)takeoff();return;}
+  if(cur===3&&(e.key==='w'||e.key==='W')){thr.value=Math.min(100,+thr.value+3);st.target=+thr.value;st.landing=false;}
+  if(cur===3&&(e.key==='s'||e.key==='S')){thr.value=Math.max(0,+thr.value-3);st.target=+thr.value;}
+},true);
+window.addEventListener('keyup',e=>{
+  if(e.target&&e.target.tagName==='INPUT'&&e.target.type!=='range') return;
+  if(e.code==='Space'){e.preventDefault();return;}
+  if(KEYMAP[e.key]){keys[e.key]=false;$('#'+KEYMAP[e.key]).classList.remove('on');}
+},true);
+
+/* ---------------- 手感 ---------------- */
+const sA=$('#sA'),sB=$('#sB');
+sA.value=lsGet('fly.sA',0);sB.value=lsGet('fly.sB',0);
+function onTune(){lsSet('fly.sA',+sA.value);lsSet('fly.sB',+sB.value);$('#saved').textContent='…';clearTimeout(pushT);pushT=setTimeout(()=>{ if(S.on) pushParams(); else $('#saved').textContent='连上后自动写入'; },350);}
+sA.addEventListener('input',onTune);sB.addEventListener('input',onTune);
+$('#btnDef').addEventListener('click',()=>{sA.value=0;sB.value=0;onTune();toast('已恢复默认');});
+(function(){const p=calcPid(+sA.value,+sB.value);$('#pidTxt').textContent='P '+p.rp+' · I '+p.ri+' · D '+p.rd+' · 角度 '+p.angP;})();
+
+/* ---------------- 模拟飞机（?mock，没接飞机时看界面用） ---------------- */
+const mock={
+  armed:false,g:0,jog:[0,0,0,0],jogEnd:0,roll:-3,pitch:2,trR:0,trP:0,q:[0,0],
+  start(){
+    setInterval(()=>{
+      const now=Date.now();let o=[0,0,0,0];
+      if(now<this.jogEnd)o=this.jog.slice();
+      else if(this.armed){const t=Math.round(this.g*0.7);o=[t,t,t,t];}
+      const n=()=>((Math.random()-.5)*0.4);
+      onLine(['D',now%1e7,this.armed?3800:4120,1,'-0.05','-0.10','0.94',n().toFixed(1),n().toFixed(1),n().toFixed(1),o[0],o[1],o[2],o[3],this.armed?1:0,0].join(','));
+    },20);
+  },
+  cmd(l){
+    const a=l.split(','),c=a[0];
+    const ack=s=>setTimeout(()=>onLine(s),30);
+    if(c==='V')ack('#VER,flight-v1,MOCK');
+    else if(c==='P')ack('#DBG,roll='+(this.roll-this.trR+this.q[0]*10).toFixed(2)+',pitch='+(this.pitch-this.trP+this.q[1]*10).toFixed(2)+',gr=0');
+    else if(c==='A'){ if(a[1]==='1'){ if(this.g>0)ack('#ERR,ARM_FAIL,油门不在 0'); else {this.armed=true;ack('#ACK,ARM');} } else {this.armed=false;ack('#ACK,DISARM');} }
+    else if(c==='G'){this.g=+a[1];}
+    else if(c==='Q'){this.q=[+a[1],+a[2]];}
+    else if(c==='X'){this.armed=false;this.g=0;ack('#ACK,STOP');}
+    else if(c==='J'){const ch=+a[1],pm=+a[2],ms=+a[3];this.jog=[0,0,0,0];if(pm>0){if(ch===0)this.jog=[pm,pm,pm,pm];else this.jog[ch-1]=pm;this.jogEnd=Date.now()+ms;}else this.jogEnd=0;}
+    else if(c==='L'){this.trR=this.roll;this.trP=this.pitch;ack('#ACK,LEVEL,trimR='+this.trR+',trimP='+this.trP);}
+    else if(c==='R'){ack('#ACK,ZERO,0,0,0');}
+    else if(c==='W'){this.saves=(this.saves||0)+1;ack('#ACK,SAVE');}
+    else if(c==='C'){ if(!/nobak/.test(location.search)) ack('#PARAMS,{"angP":2.00,"rp":1.00,"ri":0.150,"rd":0.06,"pp":1.00,"pi":0.150,"pd":0.06,"yp":0.00,"idle":0,"mthr":700,"mang":25,"trMax":250,"trimR":0.00,"trimP":0.00,"sgR":1,"sgP":1,"sgY":-1}'); }
+    else if(c==='E'){ack('#ACK,E,'+a[1]+'='+a[2]);}
+  }
+};
+})();
+</script>
+</body>
+</html>

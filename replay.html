@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>飞行回放</title>
+<style>
+:root{--bg:#0f1318;--card:#181e26;--line:#2a333e;--fg:#e8edf2;--dim:#8a97a6;--ok:#2fc47a;--warn:#f0b429;--bad:#ff4d4f;--acc:#3b9eff;--mod:#f0b429}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font:14px/1.4 "Microsoft YaHei",system-ui,sans-serif;overflow:hidden}
+.app{display:grid;grid-template-columns:170px minmax(0,1fr) 300px;grid-template-rows:1fr 64px;height:100vh}
+@media(max-width:1000px){.app{grid-template-columns:130px minmax(0,1fr) 240px}}
+#list{grid-column:1;grid-row:1/3;overflow:auto;border-right:1px solid var(--line);padding:8px}
+#list button{display:block;width:100%;text-align:left;border:0;border-radius:10px;background:transparent;color:var(--dim);padding:8px 10px;margin-bottom:4px;font:inherit;cursor:pointer}
+#list button.cur{background:var(--card);color:var(--fg)}
+#list button b{color:var(--fg);font-weight:400}
+#list .tag{font-size:11px;padding:1px 6px;border-radius:6px;background:#26313c;margin-left:4px}
+#view{grid-column:2;grid-row:1;position:relative;min-width:0;overflow:hidden}
+#view canvas{display:block}
+#hud{position:absolute;left:12px;top:10px;display:flex;gap:8px;flex-wrap:wrap}
+.chip{background:#000a;border-radius:999px;padding:4px 10px;font-size:13px}
+#note{position:absolute;left:12px;bottom:10px;color:var(--dim);font-size:12px;background:#0008;padding:4px 8px;border-radius:8px}
+#side{grid-column:3;grid-row:1/3;border-left:1px solid var(--line);padding:10px;display:flex;flex-direction:column;gap:10px;overflow:auto}
+.chart{background:var(--card);border-radius:12px;padding:8px}
+.chart .h{display:flex;justify-content:space-between;font-size:13px;color:var(--dim)}
+.chart canvas{width:100%;height:120px;display:block}
+.fit{font-size:12px;padding:1px 8px;border-radius:6px}
+.lg{display:flex;gap:12px;font-size:12px;color:var(--dim)}
+.lg i{display:inline-block;width:14px;height:3px;vertical-align:middle;margin-right:4px}
+#bar{grid-column:2;grid-row:2;display:flex;align-items:center;gap:12px;padding:0 14px;border-top:1px solid var(--line)}
+#bar button{border:0;border-radius:10px;background:#24303c;color:var(--fg);font:inherit;font-size:18px;width:44px;height:40px;cursor:pointer}
+#bar button.on{background:var(--acc)}
+#seek{flex:1;accent-color:var(--acc)}
+#tt{width:70px;text-align:right;color:var(--dim)}
+</style>
+</head>
+<body>
+<div class="app">
+  <div id="list"></div>
+  <div id="view">
+    <div id="hud">
+      <span class="chip" id="hThr">油门 --</span>
+      <span class="chip" id="hAtt">横滚 -- · 俯仰 --</span>
+      <span class="chip" id="hYaw">偏航 --</span>
+      <span class="chip" id="hPos">位置 --</span>
+    </div>
+    <div id="note">绿线 = 推算轨迹（粗估，会漂）　网格 1 m</div>
+  </div>
+  <div id="side">
+    <div class="chart"><div class="h"><span>俯视轨迹（上 = 机头方向开始时）</span><span id="mapTxt"></span></div><canvas id="cMap" style="height:200px"></canvas></div>
+    <div class="lg"><span><i style="background:var(--acc)"></i>实测</span><span><i style="background:var(--mod)"></i>模型</span></div>
+    <div class="chart"><div class="h"><span>操作：<b style="color:#3b9eff">油门%</b> · <b style="color:#2fc47a">左右杆</b> · <b style="color:#f0b429">前后杆</b></span><span id="opTxt"></span></div><canvas id="cOp"></canvas></div>
+    <div class="chart" id="vbBox"><div class="h"><span>电池 V</span><span id="vbTxt"></span></div><canvas id="cVb"></canvas></div>
+    <div class="chart"><div class="h"><span>横滚 °/s</span><span class="fit" id="fR"></span></div><canvas id="cR"></canvas></div>
+    <div class="chart"><div class="h"><span>俯仰 °/s</span><span class="fit" id="fP"></span></div><canvas id="cP"></canvas></div>
+    <div class="chart"><div class="h"><span>自转 °/s</span><span class="fit" id="fY"></span></div><canvas id="cY"></canvas></div>
+    <div class="chart"><div class="h"><span>电机 1-4 ‰</span></div><canvas id="cM"></canvas></div>
+    <div class="hint" id="mInfo" style="font-size:12px;color:var(--dim)"></div>
+  </div>
+  <div id="bar">
+    <button id="back" title="回调试台" onclick="location.href='/'">←</button>
+    <button id="play">▶</button>
+    <button id="slow" title="慢放">½</button>
+    <input type="range" id="seek" min="0" max="1000" value="0">
+    <span id="tt">0.0 s</span>
+  </div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function(){
+'use strict';
+const $=s=>document.querySelector(s);
+let DATA=null,F=null,idx=0,playing=false,speed=1,t0=0;
+
+/* ---------- 3D ---------- */
+const view=$('#view');
+const renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(2,devicePixelRatio));
+view.appendChild(renderer.domElement);
+const scene=new THREE.Scene();scene.background=new THREE.Color(0x0f1318);
+const cam=new THREE.PerspectiveCamera(50,1,0.01,200);
+scene.add(new THREE.HemisphereLight(0xffffff,0x223344,1.0));
+const dl=new THREE.DirectionalLight(0xffffff,0.6);dl.position.set(2,5,3);scene.add(dl);
+const grid=new THREE.GridHelper(20,20,0x3d4a58,0x222b35);scene.add(grid);
+// 飞机：X 机架。机体坐标：x=前（1、2 号那边）、z=右（2、4 号那边）、y=上
+const drone=new THREE.Group();scene.add(drone);
+const S=0.06;   // 臂长 6 cm，放大 3 倍好看
+const SCALE=3;
+const armMat=new THREE.MeshStandardMaterial({color:0x3d4a58});
+[[1,1],[1,-1]].forEach(([a,b])=>{const g=new THREE.BoxGeometry(2*S*1.41,0.008,0.012);const m=new THREE.Mesh(g,armMat);m.rotation.y=b*Math.PI/4;drone.add(m);});
+const body=new THREE.Mesh(new THREE.BoxGeometry(0.04,0.012,0.04),new THREE.MeshStandardMaterial({color:0x1d7a46}));drone.add(body);
+const nose=new THREE.Mesh(new THREE.ConeGeometry(0.008,0.025,10),new THREE.MeshStandardMaterial({color:0x3b9eff}));nose.rotation.z=-Math.PI/2;nose.position.set(0.035,0.01,0);drone.add(nose);
+// 电机位置：M1 前左、M2 前右、M3 后左、M4 后右
+const MP=[[S,-S],[S,S],[-S,-S],[-S,S]];
+const props=[],discs=[];
+MP.forEach(([x,z],i)=>{
+  const disc=new THREE.Mesh(new THREE.CircleGeometry(0.03,24),new THREE.MeshBasicMaterial({color:0x3b9eff,transparent:true,opacity:0.15,side:THREE.DoubleSide}));
+  disc.rotation.x=-Math.PI/2;disc.position.set(x,0.012,z);drone.add(disc);discs.push(disc);
+  const p=new THREE.Mesh(new THREE.BoxGeometry(0.058,0.002,0.006),new THREE.MeshStandardMaterial({color:0xcccccc}));p.position.set(x,0.014,z);drone.add(p);props.push(p);
+  const lbl=makeLabel(String(i+1));lbl.position.set(x,0.03,z);drone.add(lbl);
+});
+drone.scale.setScalar(SCALE);
+function makeLabel(t){const c=document.createElement('canvas');c.width=c.height=64;const g=c.getContext('2d');g.fillStyle='#fff';g.font='bold 44px sans-serif';g.textAlign='center';g.textBaseline='middle';g.fillText(t,32,34);
+  const s=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c),depthTest:false}));s.scale.set(0.025,0.025,1);return s;}
+let trail=null;
+function buildTrail(){
+  if(trail){scene.remove(trail);trail.geometry.dispose();}
+  const pts=F.pos.map(p=>new THREE.Vector3(p[0],p[2],p[1]));
+  const g=new THREE.BufferGeometry().setFromPoints(pts);
+  trail=new THREE.Line(g,new THREE.LineBasicMaterial({color:0x2fc47a}));scene.add(trail);
+}
+function resize(){const w=view.clientWidth,h=view.clientHeight;renderer.setSize(w,h);cam.aspect=w/h;cam.updateProjectionMatrix();}
+addEventListener('resize',resize);
+// 鼠标拖动转视角
+let camA=0.8,camE=0.45,camD=1.6,drag=null;
+renderer.domElement.addEventListener('pointerdown',e=>{drag=[e.clientX,e.clientY,camA,camE];});
+addEventListener('pointerup',()=>drag=null);
+addEventListener('pointermove',e=>{if(!drag)return;camA=drag[2]-(e.clientX-drag[0])*0.01;camE=Math.max(0.05,Math.min(1.5,drag[3]+(e.clientY-drag[1])*0.01));});
+renderer.domElement.addEventListener('wheel',e=>{camD=Math.max(0.4,Math.min(15,camD*(e.deltaY>0?1.1:0.9)));e.preventDefault();},{passive:false});
+
+/* ---------- 图表 ---------- */
+function chart(id,act,mod,sel){
+  const c=$(id),g=c.getContext('2d'),W=c.width=c.clientWidth*2,H=c.height=240;
+  g.clearRect(0,0,W,H);
+  const n=act.length,i0=Math.max(0,idx-150),i1=Math.min(n,idx+100);
+  let lo=-30,hi=30;for(let i=i0;i<i1;i++){lo=Math.min(lo,act[i],mod?mod[i]:0);hi=Math.max(hi,act[i],mod?mod[i]:0);}
+  const X=i=>(i-i0)/(i1-i0)*W,Y=v=>H-(v-lo)/(hi-lo)*H;
+  g.strokeStyle='#2a333e';g.beginPath();g.moveTo(0,Y(0));g.lineTo(W,Y(0));g.stroke();
+  const line=(a,col)=>{g.strokeStyle=col;g.lineWidth=3;g.beginPath();for(let i=i0;i<i1;i++){const x=X(i),y=Y(a[i]);i===i0?g.moveTo(x,y):g.lineTo(x,y);}g.stroke();};
+  if(sel){sel.forEach((a,k)=>line(a,['#3b9eff','#2fc47a','#f0b429','#ff7aa8'][k]));}
+  else{ if(mod) line(mod,'#f0b429'); line(act,'#3b9eff'); }
+  g.strokeStyle='#fff8';g.lineWidth=2;g.beginPath();g.moveTo(X(idx),0);g.lineTo(X(idx),H);g.stroke();
+}
+function fitTag(el,v){
+  if(v==null){el.textContent='';return;}
+  const good=v>0.6,mid=v>0.2;
+  el.textContent=good?'模型准 '+v:mid?'一般 '+v:'不准 '+v;
+  el.style.background=good?'#12301f':mid?'#3a2e10':'#3a1416';
+}
+
+/* ---------- 回放 ---------- */
+function pick(i){
+  F=DATA.flights[i];idx=0;playing=false;$('#play').textContent='▶';
+  document.querySelectorAll('#list button').forEach((b,k)=>b.classList.toggle('cur',k===i));
+  $('#seek').max=F.t.length-1;buildTrail();
+  fitTag($('#fR'),F.fit.roll);fitTag($('#fP'),F.fit.pitch);fitTag($('#fY'),F.fit.yaw);
+  // 从解锁后第一次离地附近开始放
+  const k=F.thr.findIndex(v=>v>=330);idx=Math.max(0,k-25);
+  draw();
+}
+function draw(){
+  if(!F)return;
+  const i=idx,deg=Math.PI/180;
+  const r=F.roll[i],p=F.pitch[i],y=F.yaw[i],P=F.pos[i];
+  // 机体：pitch+ = 1、2 号（前）往下；roll+ = 1、3 号（左）抬 → 往右倒；偏航+ = 机头右转（从上看顺时针）
+  drone.rotation.order='YXZ';
+  drone.rotation.y=-y*deg; drone.rotation.z=-p*deg; drone.rotation.x=r*deg;
+  drone.position.set(P[0],P[2]+0.02,P[1]);
+  const o=[F.o1[i],F.o2[i],F.o3[i],F.o4[i]];
+  props.forEach((pr,k)=>{pr.rotation.y+=(k===0||k===3?-1:1)*o[k]/700*1.2; discs[k].material.opacity=0.08+o[k]/700*0.5;});
+  const tx=drone.position;
+  cam.position.set(tx.x+camD*Math.cos(camE)*Math.cos(camA),tx.y+camD*Math.sin(camE),tx.z+camD*Math.cos(camE)*Math.sin(camA));
+  cam.lookAt(tx);
+  renderer.render(scene,cam);
+  $('#hThr').textContent='油门 '+Math.round(F.thr[i]/7)+'%';
+  $('#hAtt').textContent='横滚 '+r.toFixed(1)+'° · 俯仰 '+p.toFixed(1)+'°';
+  $('#hYaw').textContent='偏航 '+Math.round(y)+'° · 自转 '+Math.round(F.gy[i])+'°/s';
+  $('#hPos').textContent='位置 前 '+P[0].toFixed(2)+' · 右 '+P[1].toFixed(2)+' · 高 '+P[2].toFixed(2)+' m';
+  $('#seek').value=i;$('#tt').textContent=F.t[i].toFixed(2)+' s';
+  chart('#cR',F.gr,F.pred_roll);chart('#cP',F.gp,F.pred_pitch);chart('#cY',F.gy,F.pred_yaw);
+  chart('#cM',F.o1,null,[F.o1,F.o2,F.o3,F.o4]);
+  map2d();
+  opChart();
+}
+function opChart(){
+  const c=$('#cOp'),g=c.getContext('2d'),W=c.width=c.clientWidth*2,H=c.height=240;g.clearRect(0,0,W,H);
+  const n=F.t.length,i0=Math.max(0,idx-150),i1=Math.min(n,idx+100),X=i=>(i-i0)/(i1-i0)*W;
+  const Yc=v=>H-v/100*H, Ys=v=>H/2-v*H/2;
+  g.strokeStyle='#2a333e';g.beginPath();g.moveTo(0,H/2);g.lineTo(W,H/2);g.stroke();
+  const line=(a,Y,col)=>{if(!a)return;g.strokeStyle=col;g.lineWidth=3;g.beginPath();for(let i=i0;i<i1;i++){const x=X(i),y=Y(a[i]);i===i0?g.moveTo(x,y):g.lineTo(x,y);}g.stroke();};
+  line(F.cmd,Yc,'#3b9eff'); line(F.sr&&F.sr.map(v=>v*2.5),Ys,'#2fc47a'); line(F.sp&&F.sp.map(v=>v*2.5),Ys,'#f0b429');
+  g.strokeStyle='#fff8';g.lineWidth=2;g.beginPath();g.moveTo(X(idx),0);g.lineTo(X(idx),H);g.stroke();
+  const ar=F.sr?F.sr[idx]:0,ap=F.sp?F.sp[idx]:0;
+  $('#opTxt').textContent=(F.cmd?Math.round(F.cmd[idx])+'%':'')+(ap>0?' ↑':ap<0?' ↓':'')+(ar>0?' →':ar<0?' ←':'');
+  const vb=F.vb; $('#vbBox').style.display=vb?'':'none';
+  if(vb){ const cv=$('#cVb'),h=cv.getContext('2d'),w=cv.width=cv.clientWidth*2,hh=cv.height=160;h.clearRect(0,0,w,hh);
+    const lo=Math.min(...vb)-0.02,hi=Math.max(...vb)+0.02,Xv=i=>i/(vb.length-1)*w,Yv=v=>hh-(v-lo)/(hi-lo)*hh;
+    h.strokeStyle='#ff9f43';h.lineWidth=3;h.beginPath();vb.forEach((v,i)=>i?h.lineTo(Xv(i),Yv(v)):h.moveTo(Xv(i),Yv(v)));h.stroke();
+    h.strokeStyle='#fff8';h.lineWidth=2;h.beginPath();h.moveTo(Xv(idx),0);h.lineTo(Xv(idx),hh);h.stroke();
+    let s=vb[idx].toFixed(2)+' V'; if(F.batt) s+=' · 起飞 '+F.batt.v_start+' → 落地 '+F.batt.v_end+' V（'+F.batt.air_s+' s）';
+    $('#vbTxt').textContent=s; }
+}
+function map2d(){
+  const c=$('#cMap'),g=c.getContext('2d'),W=c.width=c.clientWidth*2,H=c.height=400;
+  g.clearRect(0,0,W,H);
+  const P=F.pos;let R=0.5;P.forEach(p=>{R=Math.max(R,Math.abs(p[0]),Math.abs(p[1]));});R*=1.15;
+  const X=p=>W/2+p[1]/R*(H/2),Y=p=>H/2-p[0]/R*(H/2);   // 右 = 右，上 = 前
+  g.strokeStyle='#2a333e';g.lineWidth=1;for(let m=-Math.ceil(R);m<=Math.ceil(R);m++){const x=W/2+m/R*H/2,y=H/2-m/R*H/2;g.beginPath();g.moveTo(x,0);g.lineTo(x,H);g.stroke();g.beginPath();g.moveTo(0,y);g.lineTo(W,y);g.stroke();}
+  g.strokeStyle='#2fc47a';g.lineWidth=3;g.beginPath();P.forEach((p,i)=>{i?g.lineTo(X(p),Y(p)):g.moveTo(X(p),Y(p));});g.stroke();
+  g.fillStyle='#fff';g.beginPath();g.arc(X(P[0]),Y(P[0]),6,0,7);g.fill();
+  g.fillStyle='#ff4d4f';g.beginPath();g.arc(X(P[idx]),Y(P[idx]),9,0,7);g.fill();
+  $('#mapTxt').textContent='格 1 m · 高 '+P[idx][2].toFixed(2)+' m';
+}
+let last=0;
+function loop(ts){
+  if(playing&&F){ const dt=(ts-last)/1000; let acc=dt*speed;
+    while(acc>0&&idx<F.t.length-1){ const d=F.t[idx+1]-F.t[idx]; acc-=d; idx++; }
+    if(idx>=F.t.length-1){playing=false;$('#play').textContent='▶';}
+  }
+  last=ts; draw(); requestAnimationFrame(loop);
+}
+$('#play').onclick=()=>{ if(!F)return; if(idx>=F.t.length-1) idx=0; playing=!playing;$('#play').textContent=playing?'⏸':'▶'; };
+$('#slow').onclick=()=>{ speed=speed===1?0.25:1; $('#slow').classList.toggle('on',speed<1); };
+$('#seek').oninput=e=>{idx=+e.target.value;};
+addEventListener('keydown',e=>{ if(e.code==='Space'){e.preventDefault();$('#play').click();} if(e.key==='ArrowRight')idx=Math.min(F.t.length-1,idx+5); if(e.key==='ArrowLeft')idx=Math.max(0,idx-5); });
+
+fetch('flights/replay.json').then(r=>r.json()).then(j=>{
+  DATA=j;
+  const L=$('#list');
+  const med=a=>{const s=a.slice().sort((x,y)=>x-y);return s[s.length>>1]||0;};
+  const air=f=>f.gy.filter((v,i)=>f.thr[i]>=330).map(Math.abs);
+  let hi=-1,hiV=0,sp=-1,spV=0;j.flights.forEach((f,i)=>{ if(!f.fixed)return; const mt=Math.max(...f.thr); const mz=Math.max(...f.pos.map(p=>p[2]));
+    if(mt*10+mz>hiV){hiV=mt*10+mz;hi=i;} const g=air(f); if(g.length>20&&med(g)>spV){spV=med(g);sp=i;} });
+  j.flights.slice().reverse().forEach((f,k)=>{ const i=j.flights.length-1-k;
+    const b=document.createElement('button');
+    const nm=f.name.replace('整次_','');const tm=nm.slice(9,11)+':'+nm.slice(11,13)+':'+nm.slice(13,15);
+    b.innerHTML='<b>'+nm.slice(4,6)+'-'+nm.slice(6,8)+' '+tm+'</b><br>空中 '+f.air+' s'+(f.full?'<span class="tag">整次·电压</span>':'')+(f.fixed?'':'<span class="tag">旧</span>')+(i===hi?'<span class="tag">🔝 最高</span>':'')+(i===sp?'<span class="tag">🌀 最转</span>':'');
+    b.onclick=()=>pick(i); L.appendChild(b);
+  });
+  const m=j.model;
+  $('#mInfo').textContent='模型：横滚 b='+(m.roll?m.roll.b.toFixed(1):'-')+'、俯仰 b='+(m.pitch?m.pitch.b.toFixed(1):'-')+' °/s² 每‰，延迟 '+(m.roll?Math.round(m.roll.td*1000):'-')+' ms，悬停油门 '+Math.round(j.hover_thr/7)+'%';
+  resize();
+  const want=decodeURIComponent(location.hash.slice(1));
+  let first=want?j.flights.findIndex(f=>f.name.startsWith(want)):-1;
+  if(first<0) first=j.flights.findIndex(f=>f.fixed&&f.air>3);
+  pick(first>=0?first:j.flights.length-1);
+  requestAnimationFrame(loop);
+});
+resize();
+})();
+</script>
+</body>
+</html>
