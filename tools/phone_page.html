@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0a111a">
+<title>mini 无人机</title>
+<style>
+:root{--bg:#0a111a;--card:#111c2c;--line:#1e2c40;--tx:#dce8f6;--dim:#7d90a9;--ok:#2fd3c0;--warn:#f2b544;--bad:#ff5a5f}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--tx);font:14px -apple-system,"PingFang SC","Microsoft YaHei",sans-serif;overflow:hidden;touch-action:none;overscroll-behavior:none}
+button{font:inherit;color:inherit}
+#app{position:fixed;inset:0;display:flex;flex-direction:column;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+.top{display:flex;align-items:center;gap:10px;padding:7px 12px;font-size:13px;border-bottom:1px solid var(--line);white-space:nowrap}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--bad);flex:none}.dot.on{background:var(--ok)}.dot.weak{background:var(--warn)}
+.sig{display:inline-flex;align-items:flex-end;gap:2px;height:13px;vertical-align:-1px}.sig i{width:3px;background:#3d4a58;border-radius:1px}
+.sp{flex:1}
+.ib{background:#16233a;border:1px solid var(--line);border-radius:9px;padding:5px 10px;font-size:15px;line-height:1}
+.main{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.35fr) minmax(0,1fr);gap:10px;padding:10px}
+@media (orientation:portrait){.main{grid-template-columns:minmax(0,1fr) minmax(0,1.3fr);grid-template-rows:auto minmax(0,1fr)}.mid{grid-column:1/3;order:-1}}
+@media (max-width:440px){.top{gap:7px;font-size:12px;padding:7px 10px}#conn{display:none}.tele{gap:8px}.mots{width:96px}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;min-height:0;min-width:0}
+/* 油门 */
+.thr{display:flex;flex-direction:column;align-items:center;padding:10px 8px;gap:6px}
+.cap{font-size:12px;color:var(--dim)}
+.track{flex:1;width:70px;border-radius:14px;background:#0d1622;border:1px solid var(--line);position:relative;overflow:hidden;min-height:90px;touch-action:none}
+.fill{position:absolute;left:0;right:0;bottom:0;height:0;background:linear-gradient(#2fd3c0,#17675f)}
+.tgt{position:absolute;left:0;right:0;height:3px;bottom:0;background:#fff;opacity:.85}
+.tkm{position:absolute;left:0;right:0;border-top:2px dashed var(--warn);bottom:64%}
+.tkm b{position:absolute;right:3px;top:-15px;font-size:10px;color:var(--warn);font-weight:400}
+.big{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums}
+.row{display:flex;gap:6px}
+.sb{background:#16233a;border:1px solid var(--line);border-radius:10px;width:38px;height:34px;font-size:18px}
+.sb:active,.ib:active{background:#21344f}
+/* 中间 */
+.mid{display:flex;flex-direction:column;gap:8px;padding:10px}
+.st{font-size:17px;font-weight:700;text-align:center}.st.ok{color:var(--ok)}.st.err{color:var(--bad)}.st.warn{color:var(--warn)}
+.tele{display:flex;gap:12px;align-items:center;justify-content:center}
+.ball{width:58px;height:58px;border-radius:50%;border:1px solid #2b3e58;position:relative;flex:none;overflow:hidden;background:#0d1622}
+.ball:before,.ball:after{content:"";position:absolute;background:#2b3e58}.ball:before{left:50%;top:0;bottom:0;width:1px}.ball:after{top:50%;left:0;right:0;height:1px}
+.bub{position:absolute;width:12px;height:12px;border-radius:50%;background:var(--ok);left:23px;top:23px}
+.nums{font-size:12px;color:var(--dim);line-height:1.6;font-variant-numeric:tabular-nums}.nums b{color:var(--tx);font-weight:600}
+.mots{display:grid;grid-template-columns:1fr 1fr;gap:3px 8px;width:110px;font-size:10px;color:var(--dim)}
+.mb{height:6px;border-radius:3px;background:#0d1622;overflow:hidden;margin-top:1px}.mb i{display:block;height:100%;width:0;background:var(--ok)}
+.btns{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:auto}
+.btn{border:none;border-radius:14px;padding:14px 0;font-size:18px;font-weight:700;color:#fff;position:relative;overflow:hidden}
+.btn:active{filter:brightness(1.2)}
+.go{background:#178a5a}.land{background:#2a5d9f}.stop{grid-column:1/3;background:#c62f35;font-size:20px;padding:15px 0}
+.go .pg{position:absolute;left:0;bottom:0;height:4px;width:0;background:#b9ffd9}
+.btn small{display:block;font-size:11px;font-weight:400;opacity:.8}
+/* 摇杆 */
+.joy{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:10px;gap:8px}
+.pad{width:min(100%,200px);aspect-ratio:1/1;border-radius:50%;background:radial-gradient(circle,#15263b 0,#0d1622 70%);border:1px solid var(--line);position:relative;touch-action:none;flex:none}
+.pad:before{content:"前";position:absolute;top:6px;left:0;right:0;text-align:center;font-size:11px;color:var(--dim)}
+.knob{position:absolute;width:40%;height:40%;left:30%;top:30%;border-radius:50%;background:#2a3d57;border:2px solid #4a6a90;pointer-events:none}
+.pad.on .knob{background:#2f5f73;border-color:var(--ok)}
+.yaw{display:flex;gap:10px}
+.yb{background:#16233a;border:1px solid var(--line);border-radius:12px;width:62px;height:38px;font-size:19px}
+.yb.on{background:#2f5f73;border-color:var(--ok)}
+/* 提示 / 设置 */
+.toast{position:fixed;left:50%;top:52px;transform:translateX(-50%);background:#1d2d44;border:1px solid #2f4664;padding:8px 14px;border-radius:10px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:9;max-width:90vw;text-align:center}
+.toast.on{opacity:1}.toast.err{background:#3a1418;border-color:#7a2a30}
+.off{position:fixed;left:0;right:0;bottom:0;background:#3a2a10;color:#ffd99a;font-size:13px;padding:8px 12px;text-align:center;z-index:8}
+.sheet{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:10}
+.sheet[hidden]{display:none}
+.box{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px 16px;width:min(94vw,420px);max-height:90vh;overflow:auto;touch-action:pan-y}
+.box h3{margin:0 0 10px;font-size:15px}
+.sec{border-top:1px solid var(--line);padding:10px 0;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.sec .lab{flex:1;min-width:120px;font-size:13px}.sec .lab i{display:block;font-style:normal;font-size:11px;color:var(--dim)}
+.tpad{display:grid;grid-template-columns:repeat(3,38px);gap:4px}
+.tpad span{display:block}
+.lk{display:block;padding:10px 12px;border-radius:10px;background:#16233a;border:1px solid var(--line);color:var(--tx);text-decoration:none;font-size:13px;flex:1;text-align:center}
+.ver{font-size:11px;color:var(--dim);margin-top:6px}
+</style></head><body>
+<div id="app">
+  <div class="top">
+    <span class="dot" id="dot"></span><span id="conn">连接中…</span>
+    <span id="bat">🔋 --</span>
+    <span id="rs"></span>
+    <span class="sp"></span>
+    <button class="ib" id="fs" title="全屏">⛶</button>
+    <button class="ib" id="cfg" title="设置">⚙</button>
+  </div>
+  <div class="main">
+    <div class="card thr">
+      <div class="cap">油门</div>
+      <div class="track" id="track"><div class="fill" id="fill"></div><div class="tkm" id="tkm"><b>起飞</b></div><div class="tgt" id="tgt"></div></div>
+      <div class="big" id="tpct">0%</div>
+      <div class="row"><button class="sb" id="tm">−</button><button class="sb" id="tp">+</button></div>
+    </div>
+    <div class="card mid">
+      <div class="st" id="st">连接中…</div>
+      <div class="tele">
+        <div class="ball"><div class="bub" id="bub"></div></div>
+        <div class="nums">横滚 <b id="nR">--</b>°<br>俯仰 <b id="nP">--</b>°<br>机头 <b id="nY">--</b>°</div>
+        <div class="mots">
+          <div>M1<div class="mb"><i id="m0"></i></div></div><div>M2<div class="mb"><i id="m1"></i></div></div>
+          <div>M3<div class="mb"><i id="m2"></i></div></div><div>M4<div class="mb"><i id="m3"></i></div></div>
+        </div>
+      </div>
+      <div class="btns">
+        <button class="btn go" id="go"><span id="goT">起飞</span><small id="goS">按住 0.6 秒</small><span class="pg" id="gopg"></span></button>
+        <button class="btn land" id="land">降落<small>慢慢落下并上锁</small></button>
+        <button class="btn stop" id="stop">⏹ 急停</button>
+      </div>
+    </div>
+    <div class="card joy">
+      <div class="cap">方向（按机头）</div>
+      <div class="pad" id="pad"><div class="knob" id="knob"></div></div>
+      <div class="yaw"><button class="yb" id="yl">⟲</button><button class="yb" id="yr">⟳</button></div>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+<div class="off" id="off" hidden>没连上飞机：手机 WiFi 连 <b>DroneBench</b>，再打开 <b>192.168.4.1</b></div>
+<div class="sheet" id="sheet" hidden><div class="box">
+  <h3>设置</h3>
+  <div class="sec"><div class="lab">一键起飞油门<i>60% 浮不出地效，默认 64%</i></div>
+    <button class="sb" id="km">−</button><b class="big" id="kv" style="width:56px;text-align:center">64%</b><button class="sb" id="kp">+</button></div>
+  <div class="sec"><div class="lab">配平（每点 0.1°）<i>总往哪飘就点反方向</i><i id="trimT">--</i></div>
+    <div class="tpad">
+      <span></span><button class="sb" data-t="P,1">▲</button><span></span>
+      <button class="sb" data-t="R,-1">◀</button><span></span><button class="sb" data-t="R,1">▶</button>
+      <span></span><button class="sb" data-t="P,-1">▼</button><span></span>
+    </div></div>
+  <div class="sec"><a class="lk" href="/bench">电机 / 校准（调试页）</a><a class="lk" href="/update">固件升级</a></div>
+  <div class="sec"><button class="lk" id="close">关闭</button></div>
+  <div class="ver" id="ver"></div>
+</div></div>
+<script>
+'use strict';
+var $=function(s){return document.querySelector(s);};
+function lsGet(k,d){try{var v=localStorage.getItem(k);return v==null?d:+v;}catch(e){return d;}}
+function lsSet(k,v){try{localStorage.setItem(k,v);}catch(e){}}
+function txt(el,v){if(el.__t!==v){el.__t=v;el.textContent=v;}}
+var tt=0;function toast(m,err){var t=$('#toast');t.textContent=m;t.className='toast on'+(err?' err':'');clearTimeout(tt);tt=setTimeout(function(){t.className='toast';},2200);}
+function buzz(ms){try{if(navigator.vibrate)navigator.vibrate(ms);}catch(e){}}
+async function get(p){var ac=new AbortController(),to=setTimeout(function(){ac.abort();},2500);
+  try{var r=await fetch(p,{cache:'no-store',signal:ac.signal});var t=await r.text();try{return JSON.parse(t);}catch(e){return {ok:r.ok?1:0,why:t};}}
+  catch(e){return null;}finally{clearTimeout(to);}}
+
+/* ---------- 状态 ---------- */
+var S={on:false,armed:false,f:0,vb:0,roll:0,pitch:0,yaw:0,o:[0,0,0,0],rssi:0,usb:false};
+var C={cmd:0,target:0,landing:false,r:0,p:0,y:0};
+var busy=false, tk=lsGet('tk',64), lastRx=0, seq=0, ws=null, armT=0, trimDirty=false, P=null, vbF=0, pctF=-1;
+var FAULT={1:'IMU 异常',2:'信号断了',4:'倾斜太大',8:'电池没电'};
+
+/* ---------- WebSocket（端口 81）：每 50 ms 发杆量，回遥测；0.9 秒收不到飞机自己停 ---------- */
+function connect(){
+  try{ws=new WebSocket('ws://'+(location.hostname||'192.168.4.1')+':81/');}catch(e){ws=null;setTimeout(connect,1000);return;}
+  ws.onclose=function(){ws=null;setTimeout(connect,busy?2000:700);};
+  ws.onerror=function(){try{ws.close();}catch(e){}};
+  ws.onmessage=function(e){
+    if(e.data==='B'){busy=true;return;}
+    busy=false;
+    var a=String(e.data).split(',');
+    if(a[0]!=='T'||a.length<19)return;
+    lastRx=performance.now();
+    S.vb=+a[2];var arm=a[3]==='1';S.f=+a[4];S.roll=+a[5];S.pitch=+a[6];
+    S.o=[+a[10],+a[11],+a[12],+a[13]];S.rssi=+a[17];S.usb=a[18]==='0';S.yaw=a.length>19?+a[19]:0;
+    if(arm!==S.armed&&performance.now()-armT>400){
+      S.armed=arm;
+      if(!arm){C.cmd=C.target=0;C.landing=false;
+        if(S.f){var w=[];for(var k in FAULT)if(S.f&k)w.push(FAULT[k]);toast('飞机自己停了：'+(w.join('、')||'代码 '+S.f),1);buzz(200);}
+        if(trimDirty){trimDirty=false;setTimeout(function(){get('/api/save');},300);}}
+    }
+  };
+}
+connect();
+function wsSend(s){if(ws&&ws.readyState===1&&ws.bufferedAmount<256){ws.send(s);return true;}return false;}
+
+setInterval(function(){
+  if(C.landing){C.target=Math.max(0,C.target-1.25);if(C.target<=0){C.landing=false;disarm('落地 ✓');}}
+  if(C.target>C.cmd)C.cmd=Math.min(C.target,C.cmd+2.5);else C.cmd=C.target;      // 往上最快 50%/秒，往下立刻
+  wsSend('U,'+(++seq)+','+(S.armed?1:0)+','+Math.round(C.cmd*10)+','+C.r.toFixed(2)+','+C.p.toFixed(2)+','+C.y.toFixed(2));
+  render();
+},50);
+
+/* ---------- 显示 ---------- */
+var BT=[[4.15,100],[4.05,90],[3.95,78],[3.87,65],[3.80,52],[3.75,40],[3.70,28],[3.65,18],[3.58,9],[3.48,3],[3.30,0]];
+function vpct(v){if(v>=BT[0][0])return 100;for(var i=1;i<BT.length;i++)if(v>=BT[i][0]){var a=BT[i-1],b=BT[i];return b[1]+(v-b[0])/(a[0]-b[0])*(a[1]-b[1]);}return 0;}
+function render(){
+  var now=performance.now(),gap=now-lastRx,on=gap<1500;
+  if(on!==S.on){S.on=on;$('#off').hidden=on;if(!on){S.armed=false;C.cmd=C.target=0;C.landing=false;}}
+  if(!on)txt($('#off'),busy?'另一台设备正在遥控这架飞机（关掉那边的页面，这里会自动接上）':'没连上飞机：手机 WiFi 连 DroneBench，再打开 192.168.4.1');
+  var d=$('#dot');d.className='dot'+(on?(gap>400?' weak':' on'):'');
+  txt($('#conn'),on?(gap>400?'信号差':'已连接'):'没连上');
+  if(on&&S.vb>2500){
+    var v=S.vb/1000;vbF=vbF?vbF+(v-vbF)*0.03:v;
+    if(!S.armed){var p=vpct(vbF-(S.usb?0.05:0));pctF=pctF<0?p:pctF+(p-pctF)*0.05;}
+    txt($('#bat'),(S.usb?'⚡':'🔋')+' '+Math.round(Math.max(pctF,0))+'% · '+v.toFixed(2)+' V');
+  } else txt($('#bat'),'🔋 --');
+  var q=!on||!S.rssi?0:S.rssi>-55?4:S.rssi>-65?3:S.rssi>-75?2:1;
+  var rk=q+'|'+S.rssi;if($('#rs').__k!==rk){$('#rs').__k=rk;var h='<span class="sig">';
+    for(var i=1;i<=4;i++)h+='<i style="height:'+(3+i*2.5)+'px;background:'+(i<=q?(q>=3?'#2fd3c0':q==2?'#f2b544':'#ff5a5f'):'#3d4a58')+'"></i>';
+    $('#rs').innerHTML=h+'</span>'+(S.rssi?' '+S.rssi:'');}
+  var st=$('#st'),s,c;
+  if(!on){s='没连上';c='err';}
+  else if(S.armed){s=C.landing?'降落中…':'飞行中';c='ok';}
+  else if(S.f&1){s='IMU 异常，不能起飞';c='err';}
+  else if(S.vb&&S.vb<3400){s='电量低，先充电';c='warn';}
+  else{s='待机 · 可以起飞';c='';}
+  txt(st,s);st.className='st '+c;
+  txt($('#nR'),S.roll.toFixed(1));txt($('#nP'),S.pitch.toFixed(1));txt($('#nY'),Math.round(S.yaw)+'');
+  $('#bub').style.transform='translate('+Math.max(-22,Math.min(22,S.roll*1.2)).toFixed(1)+'px,'+Math.max(-22,Math.min(22,-S.pitch*1.2)).toFixed(1)+'px)';
+  for(var k=0;k<4;k++)$('#m'+k).style.width=Math.max(0,Math.min(100,S.o[k]/10))+'%';
+  var show=S.armed?C.cmd:0;
+  $('#fill').style.height=show+'%';$('#tgt').style.bottom='calc('+(S.armed?C.target:0)+'% - 1px)';
+  txt($('#tpct'),Math.round(show)+'%');
+  $('#tkm').style.bottom=tk+'%';
+  txt($('#goT'),S.armed?'回到 '+tk+'%':'起飞');txt($('#goS'),S.armed?'点一下':'按住 0.6 秒 → '+tk+'%');
+}
+
+/* ---------- 起飞 / 降落 / 急停 ---------- */
+async function takeoff(){
+  if(!S.on){toast('还没连上飞机',1);return;}
+  if(S.armed){C.landing=false;C.target=tk;C.cmd=Math.max(C.cmd,tk);return;}
+  C.cmd=C.target=0;
+  var r=await get('/api/arm?on=1');
+  if(!r){toast('网络不通，没起飞',1);return;}
+  if(!r.ok){toast('不能起飞：'+(r.why||'条件不满足'),1);return;}
+  S.armed=true;armT=performance.now();C.landing=false;C.target=C.cmd=tk;buzz(40);
+}
+function disarm(msg){
+  C.cmd=C.target=0;C.landing=false;wsSend('X');get('/api/arm?on=0');
+  S.armed=false;armT=performance.now();if(msg)toast(msg);
+  if(trimDirty){trimDirty=false;setTimeout(function(){get('/api/save');},300);}
+}
+function estop(){wsSend('X');get('/api/stop');C.cmd=C.target=0;C.landing=false;S.armed=false;armT=performance.now();buzz(120);toast('⏹ 已急停');}
+$('#stop').addEventListener('pointerdown',function(e){e.preventDefault();estop();});
+$('#land').addEventListener('click',function(){if(S.armed){C.landing=true;toast('降落中…');}});
+(function(){var b=$('#go'),pg=$('#gopg'),t=0,t0=0,raf=0;
+  function anim(){var p=Math.min(1,(performance.now()-t0)/600);pg.style.width=p*100+'%';if(p<1)raf=requestAnimationFrame(anim);}
+  function cancel(){clearTimeout(t);cancelAnimationFrame(raf);pg.style.width='0';t=0;}
+  b.addEventListener('pointerdown',function(e){e.preventDefault();
+    if(S.armed){takeoff();return;}
+    try{b.setPointerCapture(e.pointerId);}catch(x){}
+    t0=performance.now();anim();t=setTimeout(function(){cancel();takeoff();},600);});
+  ['pointerup','pointercancel','lostpointercapture'].forEach(function(ev){b.addEventListener(ev,function(){if(t)cancel();});});
+})();
+/* 切出页面 / 锁屏 = 急停（手机切后台网页会被冻住，不能让飞机继续飞） */
+document.addEventListener('visibilitychange',function(){if(document.hidden&&S.armed)estop();});
+window.addEventListener('pagehide',function(){if(S.armed)estop();});
+
+/* ---------- 油门条 ---------- */
+(function(){var tr=$('#track'),act=null;
+  function setY(y){var r=tr.getBoundingClientRect();var v=Math.round(Math.max(0,Math.min(100,(r.bottom-y)/r.height*100)));C.target=v;C.landing=false;}
+  tr.addEventListener('pointerdown',function(e){e.preventDefault();if(!S.armed){toast('先按“起飞”');return;}act=e.pointerId;try{tr.setPointerCapture(act);}catch(x){}setY(e.clientY);});
+  tr.addEventListener('pointermove',function(e){if(e.pointerId===act&&S.armed)setY(e.clientY);});
+  ['pointerup','pointercancel','lostpointercapture'].forEach(function(ev){tr.addEventListener(ev,function(e){if(e.pointerId===act)act=null;});});
+})();
+function nudge(d){if(!S.armed){toast('先按“起飞”');return;}C.landing=false;C.target=Math.max(0,Math.min(100,Math.round(C.target)+d));}
+$('#tm').onclick=function(){nudge(-1);};$('#tp').onclick=function(){nudge(1);};
+
+/* ---------- 摇杆：满杆 0.3 ≈ 倾 7.5°；松手回中 ---------- */
+(function(){var pad=$('#pad'),kn=$('#knob'),act=null,MAXT=0.3;
+  function upd(e){var r=pad.getBoundingClientRect(),R=r.width*0.3;
+    var x=(e.clientX-(r.left+r.width/2))/R,y=(e.clientY-(r.top+r.height/2))/R,m=Math.hypot(x,y);
+    if(m>1){x/=m;y/=m;m=1;}
+    kn.style.transform='translate('+(x*R).toFixed(0)+'px,'+(y*R).toFixed(0)+'px)';
+    var k=m<0.1?0:(m-0.1)/0.9/m;C.r=x*k*MAXT;C.p=-y*k*MAXT;}
+  function end(e){if(e.pointerId!==act)return;act=null;pad.classList.remove('on');kn.style.transform='';C.r=C.p=0;}
+  pad.addEventListener('pointerdown',function(e){e.preventDefault();if(act!==null)return;act=e.pointerId;try{pad.setPointerCapture(act);}catch(x){}pad.classList.add('on');upd(e);});
+  pad.addEventListener('pointermove',function(e){if(e.pointerId===act)upd(e);});
+  ['pointerup','pointercancel','lostpointercapture'].forEach(function(ev){pad.addEventListener(ev,end);});
+})();
+function yawBtn(id,v){var b=$(id),act=null;
+  b.addEventListener('pointerdown',function(e){e.preventDefault();act=e.pointerId;try{b.setPointerCapture(act);}catch(x){}b.classList.add('on');C.y=v;});
+  ['pointerup','pointercancel','lostpointercapture'].forEach(function(ev){b.addEventListener(ev,function(e){if(e.pointerId!==act)return;act=null;b.classList.remove('on');C.y=0;});});}
+yawBtn('#yl',-0.4);yawBtn('#yr',0.4);
+
+/* ---------- 设置 ---------- */
+function showK(){txt($('#kv'),tk+'%');}
+showK();
+$('#km').onclick=function(){tk=Math.max(30,tk-1);lsSet('tk',tk);showK();};
+$('#kp').onclick=function(){tk=Math.min(90,tk+1);lsSet('tk',tk);showK();};
+function trimShow(){txt($('#trimT'),P?'现在：前后 '+(+P.trimP).toFixed(1)+'° · 左右 '+(+P.trimR).toFixed(1)+'°':'读取中…');}
+$('#cfg').onclick=async function(){$('#sheet').hidden=false;trimShow();
+  var p=await get('/api/params');if(p&&typeof p.trimR==='number'){P=p;trimShow();}
+  var v=await get('/api/ver');if(v&&v.v)txt($('#ver'),'固件 '+v.v);};
+$('#close').onclick=function(){$('#sheet').hidden=true;};
+$('#sheet').addEventListener('click',function(e){if(e.target===this)this.hidden=true;});
+Array.prototype.forEach.call(document.querySelectorAll('.tpad button'),function(b){b.addEventListener('click',async function(){
+  if(!P){toast('还没读到参数');return;}
+  var a=b.dataset.t.split(','),k=a[0]==='P'?'trimP':'trimR';
+  P[k]=Math.round(((+P[k]||0)+0.1*(+a[1]))*100)/100;
+  var r=await get('/api/param?k='+k+'&v='+P[k]);
+  if(!r||!r.ok){toast('没写进去，再点一次',1);return;}
+  if(S.armed)trimDirty=true;else get('/api/save');
+  trimShow();toast((a[0]==='P'?(+a[1]>0?'往前':'往后'):(+a[1]>0?'往右':'往左'))+' 0.1° ✓');
+});});
+$('#fs').onclick=function(){var d=document.documentElement;
+  try{(d.requestFullscreen||d.webkitRequestFullscreen).call(d).then(function(){try{screen.orientation.lock('landscape').catch(function(){});}catch(e){}}).catch(function(){});}catch(e){}};
+document.addEventListener('contextmenu',function(e){e.preventDefault();});
+render();
+</script></body></html>

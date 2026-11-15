@@ -686,5 +686,187 @@ rep('''      else if (!strcmp(k, "angI")) g_angI = v;''', '''      else if (!str
       else if (!strcmp(k, "ya")) g_ya = v;''')
 rep('''  else if (k == "angI") g_angI = v;''', '''  else if (k == "angI") g_angI = v;
   else if (k == "ya") g_ya = v;''')
+# ---- v16：手机遥控 + 热点优先（11-15，电脑装了 USB 网卡直连热点 DroneBench）
+# ① 手机网页不能发 UDP，原手机页用 HTTP 发心跳，网页服务一卡就 0.9 s 链路超时 → 加 WebSocket（端口 81，独立任务），
+#    收发格式和 UDP 一样（U → T，X 急停）。新手机遥控页放 "/"，原调试页挪到 "/bench"。
+# ② 连保存的 WiFi（SCF-WiFi）失败时会反复扫描/重连，热点跟着换信道、手机掉线 → 关自动重连；
+#    解锁中或热点上有设备时不去连。
+# ③ 遥测 rssi：发给热点上的设备时报热点这边的信号（以前报的是连路由器那边的）。
+# ④ 机头锁定 ya 默认 3（以前靠电脑页面每次发），手机单飞也一样。
+import os as _os
+rep('#define FW_VER "flight-v15"', '#define FW_VER "flight-v16"')
+rep('static float g_ya = 2.0f;', 'static float g_ya = 3.0f;')
+rep('#include <Update.h>\n', '#include <Update.h>\n#include <esp_wifi.h>\n#include "mbedtls/sha1.h"\n#include "mbedtls/base64.h"\n')
+rep('''  WiFi.setSleep(false);\n''', '''  WiFi.setSleep(false);\n  WiFi.setAutoReconnect(false);   // v16：别让路由器连不上时反复扫描，热点会跟着断\n''')
+rep('''static void netLoop() {''', '''static volatile int g_apRssi = 0;   // 热点上连着的设备里最弱的信号（dBm，0 = 没人）
+static void netLoop() {''')
+rep('''  if (!up && netSsid.length() && now - netTry > 20000) netBegin();''',
+    '''  {
+    wifi_sta_list_t sl; int m = 0;
+    if (esp_wifi_ap_get_sta_list(&sl) == ESP_OK)
+      for (int i = 0; i < sl.num; i++) if (m == 0 || sl.sta[i].rssi < m) m = sl.sta[i].rssi;
+    g_apRssi = m;
+  }
+  // v16：解锁中、或热点上有设备在用时不去连路由器（连接/扫描会让热点换信道、掉线）
+  if (!up && netSsid.length() && now - netTry > 20000 && !g_armed && WiFi.softAPgetStationNum() == 0) netBegin();''')
+rep('''static WiFiUDP udp;''', '''static int telem(char* o, size_t n, unsigned seq, bool ap) {
+  return snprintf(o, n, "T,%u,%lu,%d,%lu,%.1f,%.1f,%.1f,%.1f,%.1f,%d,%d,%d,%d,%.2f,%.2f,%.2f,%d,%d,%.0f",
+                  seq, (unsigned long)vbatMv, g_armed ? 1 : 0, (unsigned long)(g_fault | (imuOK ? 0 : F_IMU)),
+                  (double)g_roll, (double)g_pitch, (double)g_gr, (double)g_gp, (double)g_gy,
+                  (int)g_out[0], (int)g_out[1], (int)g_out[2], (int)g_out[3],
+                  (double)g_ax, (double)g_ay, (double)g_az, ap ? (int)g_apRssi : (int)WiFi.RSSI(),
+                  digitalRead(PIN_PGOOD), (double)g_yaw);
+}
+static WiFiUDP udp;''')
+rep('''        snprintf(o, sizeof(o), "T,%u,%lu,%d,%lu,%.1f,%.1f,%.1f,%.1f,%.1f,%d,%d,%d,%d,%.2f,%.2f,%.2f,%d,%d,%.0f",
+                 seq, (unsigned long)vbatMv, g_armed ? 1 : 0, (unsigned long)g_fault,
+                 (double)g_roll, (double)g_pitch, (double)g_gr, (double)g_gp, (double)g_gy,
+                 (int)g_out[0], (int)g_out[1], (int)g_out[2], (int)g_out[3],
+                 (double)g_ax, (double)g_ay, (double)g_az, (int)WiFi.RSSI(), digitalRead(PIN_PGOOD), (double)g_yaw);''',
+    '''        { const IPAddress ri = udp.remoteIP(); telem(o, sizeof(o), seq, ri[0] == 192 && ri[1] == 168 && ri[2] == 4); }''')
+rep('''static void sendJson(const char* s) {''', r'''// ---------------------------------------------------------------- 手机遥控通道（v16）
+// 手机网页不能发 UDP → WebSocket（端口 81，core 0 独立任务，不受网页服务卡顿影响）。
+// 收 "U,seq,live,thr,r,p,y"（和 UDP 一样）回 T 遥测；"X" 急停。同时只认一个设备：
+// 旧连接还活着（1 s 内有包）就拒绝新连接（回 "B" = 忙）；旧的没动静了才让新的接管（刷新页面 / 换手机）。
+static WiFiServer wsSrv(81);
+static bool wsSend(WiFiClient& c, uint8_t op, const char* s, size_t n) {
+  uint8_t f[260]; size_t h;
+  if (n > 250) n = 250;
+  f[0] = 0x80 | op;
+  if (n < 126) { f[1] = (uint8_t)n; h = 2; } else { f[1] = 126; f[2] = 0; f[3] = (uint8_t)n; h = 4; }
+  memcpy(f + h, s, n);
+  return c.write(f, h + n) == h + n;
+}
+static bool wsHandshake(WiFiClient& c) {
+  char req[1200]; size_t n = 0; const uint32_t t0 = millis();
+  req[0] = 0;
+  while (millis() - t0 < 1000) {
+    while (c.available() && n < sizeof(req) - 1) req[n++] = (char)c.read();
+    req[n] = 0;
+    if (strstr(req, "\r\n\r\n")) break;
+    if (n >= sizeof(req) - 1 || !c.connected()) return false;
+    vTaskDelay(pdMS_TO_TICKS(3));
+  }
+  const char* k = nullptr;
+  for (const char* p = req; *p; p++) if (!strncasecmp(p, "Sec-WebSocket-Key:", 18)) { k = p + 18; break; }
+  if (!k) return false;
+  while (*k == ' ') k++;
+  char key[100]; size_t kl = 0;
+  while (k[kl] && k[kl] != '\r' && k[kl] != '\n' && kl < 60) { key[kl] = k[kl]; kl++; }
+  memcpy(key + kl, "258EAFA5-E914-47DA-95CA-C5AB0DC85B11", 36); kl += 36;
+  unsigned char sha[20], acc[40]; size_t al = 0;
+  mbedtls_sha1((const unsigned char*)key, kl, sha);
+  mbedtls_base64_encode(acc, sizeof(acc) - 1, &al, sha, 20); acc[al] = 0;
+  char resp[200];
+  const int rl = snprintf(resp, sizeof(resp),
+    "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: %s\r\n\r\n", acc);
+  c.setNoDelay(true);
+  return c.write((const uint8_t*)resp, rl) == (size_t)rl;
+}
+static void wsTask(void*) {
+  WiFiClient cli; bool on = false;
+  static uint8_t rx[320]; size_t rn = 0; uint32_t last = 0;
+  char o[240], p[208];
+  for (;;) {
+    WiFiClient nc = wsSrv.accept();
+    if (nc) {
+      if (on && millis() - last < 1000) {
+        // 已有设备在控制（1 s 内有包）：不顶掉它。没解锁时告诉后来者“忙”，解锁中直接关（握手会占住任务）
+        if (!g_armed && wsHandshake(nc)) wsSend(nc, 1, "B", 1);
+        nc.stop();
+      }
+      else if (wsHandshake(nc)) { if (on) cli.stop(); cli = nc; on = true; rn = 0; last = millis(); }
+      else nc.stop();
+    }
+    if (on && (!cli.connected() || millis() - last > 3000)) { cli.stop(); on = false; rn = 0; }
+    if (on) {
+      int av = cli.available();
+      if (av > 0 && rn < sizeof(rx)) { int g = cli.read(rx + rn, sizeof(rx) - rn); if (g > 0) rn += g; }
+      while (on && rn >= 2) {
+        const uint8_t op = rx[0] & 0x0F; const bool mk = rx[1] & 0x80;
+        size_t len = rx[1] & 0x7F, h = 2;
+        if (len == 126) { if (rn < 4) break; len = ((size_t)rx[2] << 8) | rx[3]; h = 4; }
+        if (len > 200 || (rx[1] & 0x7F) == 127) { cli.stop(); on = false; rn = 0; break; }
+        const size_t mh = h + (mk ? 4 : 0);
+        if (rn < mh + len) break;
+        for (size_t i = 0; i < len; i++) p[i] = (char)(rx[mh + i] ^ (mk ? rx[h + (i & 3)] : 0));
+        p[len] = 0;
+        memmove(rx, rx + mh + len, rn - mh - len); rn -= mh + len;
+        last = millis();
+        if (op == 8) { wsSend(cli, 8, "", 0); cli.stop(); on = false; rn = 0; break; }
+        if (op == 9) { wsSend(cli, 10, p, len); continue; }
+        if (op != 1) continue;
+        unsigned seq = 0; int live = 0, t = 0; float r = 0, pp = 0, y = 0;
+        if (p[0] == 'X') {
+          disarm(0);
+          for (int k = 0; k < 4; k++) g_jogPm[k] = 0;
+          g_spin = 0;
+        } else if (p[0] == 'U' && sscanf(p, "U,%u,%d,%d,%f,%f,%f", &seq, &live, &t, &r, &pp, &y) == 6) {
+          if (live && g_armed) {
+            if (t < 0) t = 0; if (t > 1000) t = 1000;
+            g_thr = t;
+            g_stkRoll  = r < -1 ? -1 : (r > 1 ? 1 : r);
+            g_stkPitch = pp < -1 ? -1 : (pp > 1 ? 1 : pp);
+            g_stkYaw   = y < -1 ? -1 : (y > 1 ? 1 : y);
+            g_lastStick = millis();
+          }
+          const int ol = telem(o, sizeof(o), seq, true);
+          if (!wsSend(cli, 1, o, ol > 0 ? ol : 0)) { cli.stop(); on = false; rn = 0; }
+        }
+      }
+      if (on && rn >= sizeof(rx)) { cli.stop(); on = false; rn = 0; }
+    }
+    vTaskDelay(pdMS_TO_TICKS(2));
+  }
+}
+
+static void sendJson(const char* s) {''')
+_page = open(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), 'phone_page.html'), encoding='utf-8').read()
+assert ')HTML"' not in _page
+rep('''static const char OTA_HTML[] PROGMEM''', 'static const char PHONE_HTML[] PROGMEM = R"HTML(' + _page + ''')HTML";
+
+static const char OTA_HTML[] PROGMEM''')
+rep('''  server.on("/", []() { server.send_P(200, "text/html; charset=utf-8", PAGE_HTML); });''',
+    '''  server.on("/", []() { server.send_P(200, "text/html; charset=utf-8", PHONE_HTML); });
+  server.on("/bench", []() { server.send_P(200, "text/html; charset=utf-8", PAGE_HTML); });
+  server.on("/api/ver", []() { sendJson("{\\"v\\":\\"" FW_VER "\\"}"); });''')
+rep('''  xTaskCreatePinnedToCore(udpTask, "udp", 4096, nullptr, 3, nullptr, 0);''',
+    '''  xTaskCreatePinnedToCore(udpTask, "udp", 4096, nullptr, 3, nullptr, 0);
+  wsSrv.begin(); wsSrv.setNoDelay(true);
+  xTaskCreatePinnedToCore(wsTask, "ws", 6144, nullptr, 3, nullptr, 0);''')
+# ⑤ IMU：11-15 重焊电机线后 WHO_AM_I 正常、数据全 0，原逻辑仍判“就绪”还能解锁 → 先软复位再配置、回读核对并打印；
+#    零偏标定时加计模长必须在 0.5~1.5 g，否则判 IMU 故障（禁止解锁）。
+rep('''    if (imuR(0x00, &who, 1) && who == 0x05) {
+      imuW(0x02, 0x40);    // CTRL1 地址自增''', '''    if (imuR(0x00, &who, 1) && who == 0x05) {
+      imuW(0x60, 0xB0);    // v16：软复位（重焊/上电不干净时传感器可能停在没开的状态）
+      delay(30);
+      for (int w = 0; w < 20 && !(imuR(0x00, &who, 1) && who == 0x05); w++) delay(10);
+      imuW(0x02, 0x40);    // CTRL1 地址自增''')
+rep('''      imuW(0x08, 0x03);    // CTRL7 使能
+      delay(120);
+      return true;''', '''      imuW(0x08, 0x03);    // CTRL7 使能
+      delay(120);
+      {
+        uint8_t c1 = 0, c2 = 0, c3 = 0, c7 = 0, raw[12] = {0};
+        imuR(0x02, &c1, 1); imuR(0x03, &c2, 1); imuR(0x04, &c3, 1); imuR(0x08, &c7, 1); imuR(0x35, raw, 12);
+        Serial.printf("#IMU,cfg,c1=%02X,c2=%02X,c3=%02X,c7=%02X,raw=%02X%02X,%02X%02X,%02X%02X,%02X%02X\\n",
+                      c1, c2, c3, c7, raw[1], raw[0], raw[3], raw[2], raw[5], raw[4], raw[7], raw[6]);
+        if (c7 != 0x03) { imuW(0x08, 0x03); delay(60); }
+      }
+      return true;''')
+rep('''  float s[3] = {0, 0, 0};
+  int n = 0;
+  float aa[3], gg[3];''', '''  float s[3] = {0, 0, 0}, am = 0;
+  int n = 0;
+  float aa[3], gg[3];''')
+rep('''    if (ok && el > dur * 2 / 5) { s[0] += gg[0]; s[1] += gg[1]; s[2] += gg[2]; n++; }''',
+    '''    if (ok && el > dur * 2 / 5) { s[0] += gg[0]; s[1] += gg[1]; s[2] += gg[2]; am += sqrtf(aa[0] * aa[0] + aa[1] * aa[1] + aa[2] * aa[2]); n++; }''')
+rep('''  if (n < 30) return false;
+  float b[3];''', '''  if (n < 30) return false;
+  am /= (float)n;
+  if (am < 0.5f || am > 1.5f) { Serial.printf("#ERR,IMU_ACC,%.2f\\n", (double)am); return false; }   // v16：数据全 0 也算坏
+  float b[3];''')
+rep('选一个 .bin（arduino-cli 编译产物 flight_v1.ino.bin）', '选一个 .bin（编译产物 flight_vNN.ino.bin）')
+rep('只接受本机编译的 <i>flight_v1.ino.bin</i>', '只接受本机编译的 <i>flight_vNN.ino.bin</i>')
 open(dst, 'w', encoding='utf-8').write(t)
 print('ok')

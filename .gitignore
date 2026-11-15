@@ -9,3 +9,6 @@ flights/video/*.mp4
 __pycache__/
 *.pyc
 drone_link.log
+
+# 资料包解压出来的副本（原 zip 已在仓库里）
+pack/ESP32-1S_drone_pack/
