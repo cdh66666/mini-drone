@@ -666,13 +666,11 @@ function batShow(){
   else { if(!CH.offAt) CH.offAt=now; if(now-CH.offAt>30){ CH.hist=[]; try{ localStorage.removeItem('chgHist'); }catch(e){} } }
   let s='';
   if(D.usb){
-    if(v>=4.17) s='⚡ 快满了';
-    else if(CH.hist.length>20&&now-CH.hist[0][0]>120){
-      const h=CH.hist,n=h.length;let sx=0,sy=0,sxx=0,sxy=0;h.forEach(([x,y])=>{x-=h[0][0];sx+=x;sy+=y;sxx+=x*x;sxy+=x*y;});
-      const k=(n*sxy-sx*sy)/(n*sxx-sx*sx);   // V/s
-      if(k>0.000005){ const min=Math.round((4.15-v)/k/60+10); s='⚡ 约 '+(min>90?Math.round(min/6)/10+' 小时':min+' 分钟')+'充满'; }
-      else s='⚡ 充电中';
-    } else { const min=Math.round((100-pct)*1.2); s='⚡ 约 '+(min>90?Math.round(min/6)/10+' 小时':min+' 分钟')+'充满'; }   // 数据还不够：按约 2 小时充满粗估
+    // 按电量算，不按电压斜率（中段电压很平，斜率一小时间就暴涨）。
+    // 实测（battery_log 11-11、11-16 两次各 46 分钟）：恒流段约 0.95 分钟/1%，到 95% 后恒压收尾约 15 分钟。
+    // 充电中 pct 只升不降 → 预计时间只会越来越短
+    if(v>=4.17||pct>=99) s='⚡ 快满了';
+    else { const min=Math.max(2,Math.round(pct<95?(95-pct)*0.95+15:(100-pct)*3)); s='⚡ 约 '+(min>90?Math.round(min/6)/10+' 小时':min+' 分钟')+'充满'; }
   } else if(!st.armed&&v<3.6) s='⚠ 该充电了';
   $('#chg').textContent=s;
 }
