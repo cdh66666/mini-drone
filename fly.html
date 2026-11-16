@@ -7,7 +7,7 @@
 <style>
 :root{--bg:#0f1318;--card:#181e26;--line:#2a333e;--fg:#e8edf2;--dim:#8a97a6;--ok:#2fc47a;--warn:#f0b429;--bad:#ff4d4f;--acc:#3b9eff}
 *{box-sizing:border-box}
-html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font:16px/1.4 "Microsoft YaHei",system-ui,sans-serif;overflow:hidden;user-select:none}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font:16px/1.4 "Microsoft YaHei",system-ui,sans-serif;overflow:hidden;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
 button{font:inherit;color:inherit;cursor:pointer;border:0;border-radius:12px;background:#24303c;padding:10px 16px}
 button:disabled{opacity:.35;cursor:not-allowed}
 button:focus{outline:none}
@@ -132,6 +132,12 @@ h2{margin:0;font-size:24px}
 .mr .mdir{padding:5px 10px;font-size:14px;border-radius:8px}
 .mr .mdir.on{background:var(--acc);color:#fff}
 .mr .mres{font-size:13px}
+.ptab{display:flex;flex-direction:column;gap:10px;padding:14px}
+.prow{display:grid;grid-template-columns:90px 36px 64px 36px 1fr;align-items:center;gap:8px}
+.prow button{padding:4px 0;font-size:18px;border-radius:8px}
+.prow .pv{text-align:center;font-weight:700;font-size:17px}
+.prow .ph{color:var(--dim);font-size:12px}
+@media (max-width:640px){.prow{grid-template-columns:80px 32px 56px 32px}.prow .ph{grid-column:1/-1;margin-top:-4px}}
 .amp{display:flex;align-items:center;gap:10px;background:var(--card);border-radius:12px;padding:6px 12px}
 .amp .cap{white-space:nowrap}
 .amp input{flex:1;min-width:0;accent-color:var(--acc);height:26px;cursor:pointer}
@@ -222,7 +228,7 @@ h2{margin:0;font-size:24px}
   <button data-s="1"><span class="i">📐</span>校准</button>
   <button data-s="2"><span class="i">⚙️</span>电机</button>
   <button data-s="3"><span class="i">🛫</span>飞行</button>
-  <button data-s="4" style="display:none"><span class="i">🎚️</span>手感</button>
+  <button data-s="4"><span class="i">🎚️</span>参数</button>
 </nav>
 <div class="stage">
 
@@ -381,19 +387,10 @@ h2{margin:0;font-size:24px}
 
 <!-- 5 手感 -->
 <section class="step" data-s="4">
-  <h2>飞得不舒服？拖一下，自动保存</h2>
-  <div class="card" style="display:flex;flex-direction:column;gap:26px;padding:26px">
-    <div class="slide"><span>🐢 稳</span><input type="range" id="sA" min="-4" max="4" step="1" value="0"><span>灵 🐇</span></div>
-    <div class="slide"><span>〰️ 抖</span><input type="range" id="sB" min="-4" max="4" step="1" value="0"><span>晃 🌊</span></div>
-  </div>
-  <div class="tips">
-    <div>🫨 反应太猛、一碰就窜 → 往 <b>🐢</b></div>
-    <div>🐌 软趴趴、扶不正 → 往 <b>🐇</b></div>
-    <div>〰️ 嗡嗡高频抖 → 往 <b>〰️</b></div>
-    <div>🌊 来回晃、停不下来 → 往 <b>🌊</b></div>
-  </div>
+  <h2>参数 <span class="hint" style="font-weight:400">点 ± 马上写进飞机并存盘（飞行中不能改）</span></h2>
+  <div class="card ptab" id="ptab"></div>
   <div class="row">
-    <button class="ghost" id="btnDef">↺ 恢复默认</button>
+    <button class="ghost" id="btnDef">↺ 推荐值</button>
     <button class="ghost" id="btnOrig">↩ 原参数</button>
     <span class="hint" id="saved"></span>
   </div>
@@ -420,7 +417,7 @@ function calcPid(a,b){
   const r=x=>Math.round(x*1000)/1000;
   return {angP:r(BASE.angP*s),rp:r(BASE.rp*s),pp:r(BASE.pp*s),
           rd:r(BASE.rd*s*(2-d)),pd:r(BASE.pd*s*(2-d)),ri:BASE.ri,pi:BASE.pi,
-          yp:BASE.yp,idle:BASE.idle,mthr:BASE.mthr,iThr:BASE.iThr,ya:BASE.ya};
+          yp:BASE.yp,idle:BASE.idle,mthr:BASE.mthr,iThr:BASE.iThr,ya:BASE.ya,yff:BASE.yff};
 }
 function lsGet(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v);}catch(e){return d;}}
 function lsSet(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}}
@@ -591,8 +588,15 @@ function backupThenPush(){
   ask();
 }
 let curP=null;
+let pvWant=null,pvTry=0;
 function gotParams(j){
   if(j&&typeof j.angP==='number') curP=j;
+  // 写完回读：UDP 一次发十几条会丢，回读对不上的再发（最多 4 轮）
+  if(pvWant&&j&&typeof j.angP==='number'){
+    const bad=Object.keys(pvWant).filter(k=>typeof j[k]==='number'&&Math.abs(j[k]-pvWant[k])>1e-3);
+    if(bad.length&&pvTry<4){ pvTry++; bad.forEach(k=>send('E,'+k+','+pvWant[k])); saveIfSafe(); setTimeout(()=>send('C'),700); }
+    else { if(bad.length) toast('有参数没写进去：'+bad.join(','),1); pvWant=null; }
+  }
   if(canSave||typeof j.angP!=='number')return;
   clearTimeout(bakWait);
   const bak={time:new Date().toISOString(),params:j};
@@ -607,10 +611,12 @@ $('#btnOrig').addEventListener('click',()=>{
   else { send('U'); toast('已从飞机存储重新读取；不行就重新上电'); }
 });
 function pushParams(save){
-  const p=calcPid(+$('#sA').value,+$('#sB').value);
+  const p=calcPid(0,0);
   delete p.yp; delete p.yi;   // 偏航由飞控自己定：空中测一次方向，测准后自己打开并保存
-  ['angP','rp','ri','rd','pp','pi','pd','yp','yi','idle','mthr','iThr','ya'].forEach(k=>{ if(p[k]!=null) send('E,'+k+','+p[k]); });
+  ['angP','rp','ri','rd','pp','pi','pd','yp','yi','idle','mthr','iThr','ya','yff'].forEach(k=>{ if(p[k]!=null) send('E,'+k+','+p[k]); });
   saveIfSafe();
+  pvWant={}; ['angP','rp','ri','rd','pp','pi','pd','mthr','yff'].forEach(k=>{ if(typeof p[k]==='number') pvWant[k]=p[k]; }); pvTry=0;
+  setTimeout(()=>send('C'),900);
   if(!canSave) $('#saved').textContent='只改内存（原参数在飞机里没动）';
   $('#pidTxt').textContent='P '+p.rp+' · I '+p.ri+' · D '+p.rd+' · 角度 '+p.angP;
 }
@@ -990,12 +996,29 @@ window.addEventListener('keyup',e=>{
 },true);
 
 /* ---------------- 手感 ---------------- */
-const sA=$('#sA'),sB=$('#sB');
-sA.value=lsGet('fly.sA',0);sB.value=lsGet('fly.sB',0);
-function onTune(){lsSet('fly.sA',+sA.value);lsSet('fly.sB',+sB.value);$('#saved').textContent='…';clearTimeout(pushT);pushT=setTimeout(()=>{ if(S.on) pushParams(); else $('#saved').textContent='连上后自动写入'; },350);}
-sA.addEventListener('input',onTune);sB.addEventListener('input',onTune);
-$('#btnDef').addEventListener('click',()=>{sA.value=0;sB.value=0;onTune();toast('已恢复默认');});
-(function(){const p=calcPid(+sA.value,+sB.value);$('#pidTxt').textContent='P '+p.rp+' · I '+p.ri+' · D '+p.rd+' · 角度 '+p.angP;})();
+/* 直接调参数：改 BASE → 写电脑 tune.json（下次连上也用它）→ 发给飞机并存盘 */
+const PDEF=[
+  {k:'rp',ks:['rp','pp'],n:'角速度 P',st:0.05,lo:0.1,hi:1.5,d:2,h:'软、跟手慢、来回慢晃 → 加；嗡嗡高频抖 → 减'},
+  {k:'rd',ks:['rd','pd'],n:'角速度 D',st:0.005,lo:0,hi:0.1,d:3,h:'冲过头、晃停不下 → 加；电机发烫/高频抖 → 减'},
+  {k:'ri',ks:['ri','pi'],n:'角速度 I',st:0.05,lo:0,hi:2,d:2,h:'总往一边慢慢歪 → 加；慢慢来回大摆 → 减'},
+  {k:'angP',ks:['angP'],n:'角度 P',st:0.25,lo:1,hi:10,d:2,h:'回正慢、松杆后不回平 → 加；回正冲过头 → 减'},
+  {k:'yff',ks:['yff'],n:'偏航补偿',st:5,lo:-200,hi:200,d:0,h:'一起飞就往一个方向转：转得更快了就往反方向调'},
+];
+const REC={rp:0.5,rd:0.02,ri:0.5,angP:4,yff:-60};   // Claude 推荐（11-16，49 g 带保护圈）
+$('#ptab').innerHTML=PDEF.map(p=>'<div class="prow" data-k="'+p.k+'"><b>'+p.n+'</b><button data-d="-1">−</button><span class="pv">--</span><button data-d="1">+</button><span class="ph">'+p.h+'</span></div>').join('');
+function ptabShow(){ PDEF.forEach(p=>{ const v=BASE[p.k]; $('.prow[data-k="'+p.k+'"] .pv').textContent=(typeof v==='number')?v.toFixed(p.d):'--'; });
+  const q=calcPid(0,0); $('#pidTxt').textContent='飞机里：P '+q.rp+' · I '+q.ri+' · D '+q.rd+' · 角度 '+q.angP+' · 偏航补偿 '+BASE.yff; }
+function setParam(p,v){
+  if(st.armed){toast('先上锁再改',1);return;}
+  v=Math.max(p.lo,Math.min(p.hi,Math.round(v/p.st)*p.st)); v=+v.toFixed(p.d+1);
+  p.ks.forEach(k=>{ BASE[k]=v; fetch('/api/tune?set='+k+'&v='+v).catch(()=>{}); });
+  ptabShow(); $('#saved').textContent='…';
+  clearTimeout(pushT); pushT=setTimeout(()=>{ if(S.on){ pushParams(); $('#saved').textContent='✓ 已写入飞机'; } else $('#saved').textContent='连上后自动写入'; },300);
+}
+$$('.prow').forEach(r=>{ const p=PDEF.find(x=>x.k===r.dataset.k);
+  r.querySelectorAll('button').forEach(b=>b.addEventListener('click',()=>setParam(p,(+BASE[p.k]||0)+p.st*(+b.dataset.d)))); });
+$('#btnDef').addEventListener('click',()=>{ PDEF.forEach(p=>setParam(p,REC[p.k])); toast('已改成推荐值'); });
+setTimeout(ptabShow,800); setInterval(ptabShow,3000);
 
 /* ---------------- 模拟飞机（?mock，没接飞机时看界面用） ---------------- */
 const mock={

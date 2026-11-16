@@ -573,9 +573,17 @@ class H(BaseHTTPRequestHandler):
             except Exception:
                 pass
             return self._json({"ok": 1})
-        if u.path == "/api/tune":    # Claude 调好的基准参数
-            try: return self._json(json.load(open(os.path.join(HERE, "tune.json"), encoding="utf-8")))
-            except Exception: return self._json({})
+        if u.path == "/api/tune":    # 基准参数；?set=k&v=v 改一项（调试台「参数」页用）
+            fn = os.path.join(HERE, "tune.json")
+            try: j = json.load(open(fn, encoding="utf-8"))
+            except Exception: j = {}
+            k, v = q.get("set", [""])[0], q.get("v", [""])[0]
+            if k in ("rp", "pp", "rd", "pd", "ri", "pi", "angP", "yff") and v:
+                try:
+                    j[k] = float(v)
+                    with open(fn, "w", encoding="utf-8") as f: json.dump(j, f, ensure_ascii=False)
+                except ValueError: pass
+            return self._json(j)
         if u.path == "/api/flash":
             return self._json(flash())
         if u.path == "/api/fwinfo":

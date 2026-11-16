@@ -2578,6 +2578,10 @@ $('#lvl').onclick=async function(){
 $('#fs').onclick=function(){var d=document.documentElement;
   try{(d.requestFullscreen||d.webkitRequestFullscreen).call(d).then(function(){try{screen.orientation.lock('landscape').catch(function(){});}catch(e){}}).catch(function(){});}catch(e){}};
 document.addEventListener('contextmenu',function(e){e.preventDefault();});
+/* 长按不选字、不弹复制菜单：按住类的控件直接吃掉 touchstart（它们只用 pointer 事件），全局禁止选区 */
+document.addEventListener('selectstart',function(e){if(!(e.target.closest&&e.target.closest('input,textarea')))e.preventDefault();});
+document.addEventListener('selectionchange',function(){var s=window.getSelection&&window.getSelection();if(s&&s.rangeCount&&!(document.activeElement&&/INPUT|TEXTAREA/.test(document.activeElement.tagName)))s.removeAllRanges();});
+['#stop','#go','#track','#pad','#yl','#yr'].forEach(function(s){var el=$(s);if(el)el.addEventListener('touchstart',function(e){if(e.cancelable)e.preventDefault();},{passive:false});});
 render();
 </script></body></html>
 )HTML";
