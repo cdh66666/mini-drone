@@ -122,6 +122,32 @@ h2{margin:0;font-size:24px}
 #toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);background:#000c;padding:12px 22px;border-radius:12px;font-size:17px;opacity:0;transition:opacity .2s;pointer-events:none;max-width:80vw;text-align:center}
 #toast.show{opacity:1}
 #toast.e{background:#7a1214}
+.inst{min-width:0}
+/* 窗口窄：右栏挪到下面一整排；再窄：侧栏/顶栏收紧 */
+@media (max-width:960px){
+  .fly{grid-template-columns:90px minmax(0,1fr)}
+  .fly>.side{grid-column:1/-1;display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));align-items:start}
+  .stage{padding:14px 16px}
+}
+@media (max-width:640px){
+  main{grid-template-columns:64px 1fr}
+  nav{padding:8px 4px}
+  nav button{font-size:12px;padding:8px 2px}
+  nav button .i{font-size:22px}
+  header{gap:6px;padding:0 8px}
+  header .logo{display:none}
+  .chip{font-size:13px;padding:4px 8px}
+  #estop{font-size:18px;padding:8px 14px;white-space:nowrap}
+  #estop small{display:none}
+  .fly{grid-template-columns:70px minmax(0,1fr);gap:10px}
+  .level{width:200px;height:200px}
+  .level.sm,#liveMap{width:120px;height:120px}
+  .inst{padding:10px;gap:10px}
+  .bars{gap:8px 16px}
+  .frame{transform:scale(.8);transform-origin:top center}
+  .slide{grid-template-columns:70px 1fr 70px;font-size:16px}
+  .tips,.checks{grid-template-columns:1fr}
+}
 .flash{animation:fl .5s}
 @keyframes fl{0%{background:var(--bad)}100%{}}
 </style>
