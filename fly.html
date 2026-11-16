@@ -197,7 +197,7 @@ h2{margin:0;font-size:24px}
   <span class="chip" id="batChip" title="电池"><span class="batt"><i id="batFill"></i></span><b id="batPct">--</b><span class="dim" id="vb"></span><span id="chg" class="dim"></span></span>
   <span class="chip" id="fchip" style="display:none;background:#3a1416"></span>
   <span class="grow"></span>
-  <button id="estop">⏹ 急停<small>空格</small></button>
+  <button id="estop">⏹ 急停<small>Esc</small></button>
 </header>
 <main>
 <nav id="nav">
@@ -334,7 +334,7 @@ h2{margin:0;font-size:24px}
       <div class="ctl">
         <div class="tog" id="confirm"><span class="box"></span>安全确认</div>
         <button class="okb" id="arm">🔓 解锁</button>
-        <button class="ghost" id="btnLand">⬇ 降落</button>
+        <button class="ghost" id="btnLand">⬇ 降落<small class="dim" style="font-size:12px;margin-left:4px">空格</small></button>
       </div>
       <div class="setup">
       <div class="trim">
@@ -353,7 +353,7 @@ h2{margin:0;font-size:24px}
       </div>
       </div>
       <div class="keys" style="display:none"><span class="key" id="kU"></span><span class="key" id="kL"></span><span class="key" id="kD"></span><span class="key" id="kR"></span></div>
-      <div class="dim khint" style="font-size:12px;text-align:center">⏎ 起飞 · 空格 急停 · WASD 方向 · ↑↓ 油门</div>
+      <div class="dim khint" style="font-size:12px;text-align:center">⏎ 起飞 · 空格 慢降（再按急停）· Esc 急停 · WASD 方向 · ↑↓ 油门</div>
     </div>
   </div>
 </section>
@@ -882,13 +882,15 @@ $('#arm').addEventListener('click',()=>{
   if(+thr.value>0){toast('油门先拉到 0',1);return;}
   send('X');send('A,1');
 });
-$('#btnLand').addEventListener('click',()=>{ if(st.armed){st.landing=true;toast('降落中…');} });
+function land(){ if(st.armed&&!st.landing){st.landing=true;st.landT=performance.now();st.landFrom=st.cmd;toast('⬇ 降落中，2 秒落地（再按空格 = 急停）');} }
+$('#btnLand').addEventListener('click',land);
 
 /* 心跳：解锁后每 100ms 发一次油门 + 方向（固件 0.9 秒收不到会自停） */
 const keys={};
 setInterval(()=>{
   if(!st.armed||!S.on)return;
-  if(st.landing){ st.target=Math.max(0,st.target-2.5); thr.value=Math.round(st.target); if(st.target<=0&&st.cmd<=0){ send('A,0'); armedUI(false); toast('落地 ✓'); return; } }
+  if(st.landing){ const u=Math.min(1,(performance.now()-st.landT)/2000);   // 2 秒落地：先慢后快（1 - u²）
+    st.target=Math.max(0,st.landFrom*(1-u*u)); st.cmd=Math.min(st.cmd,st.target); thr.value=Math.round(st.target); if(st.target<=0&&st.cmd<=0){ send('A,0'); armedUI(false); toast('落地 ✓'); return; } }
   if(st.target>st.cmd) st.cmd=Math.min(st.target,st.cmd+5);   // 往上最快 50%/秒
   else st.cmd=st.target;                                        // 往下立刻
   const T=0.24;   // 杆量 × 最大倾角 25° ≈ 6°（3.5° 推不动，8.7° 会冲出去撞）
@@ -915,7 +917,9 @@ const KEYMAP={ArrowUp:'kU',ArrowDown:'kD',ArrowLeft:'kL',ArrowRight:'kR'};
 const WASD={KeyW:'ArrowUp',KeyS:'ArrowDown',KeyA:'ArrowLeft',KeyD:'ArrowRight'};
 window.addEventListener('keydown',e=>{
   if(e.target&&e.target.tagName==='INPUT'&&e.target.type!=='range'){ if(e.key==='Enter'&&e.target.id==='pw') $('#btnJoin').click(); return; }
-  if(e.code==='Space'){e.preventDefault();estop();return;}
+  if(e.code==='Escape'){e.preventDefault();estop();return;}
+  if(e.code==='Space'){e.preventDefault(); if(e.repeat)return;   // 空格：第一下慢降，降落中再按 = 急停；没解锁时就是急停
+    if(st.armed&&!st.landing) land(); else estop(); return;}
   const k=WASD[e.code];
   if(k){e.preventDefault();keys[k]=true;$('#'+KEYMAP[k]).classList.add('on');return;}
   if(e.key==='Enter'){e.preventDefault();if(cur===3)takeoff();return;}
