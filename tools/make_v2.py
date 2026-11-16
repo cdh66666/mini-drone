@@ -899,5 +899,73 @@ rep('''  server.on("/api/ver", []() {''', '''  server.on("/api/imureg", handleIm
   server.on("/api/ver", []() {''')
 rep('选一个 .bin（arduino-cli 编译产物 flight_v1.ino.bin）', '选一个 .bin（编译产物 flight_vNN.ino.bin）')
 rep('只接受本机编译的 <i>flight_v1.ino.bin</i>', '只接受本机编译的 <i>flight_vNN.ino.bin</i>')
+# ================= v17（11-16）：不动硬件，软件补 M2/M3 弱 =================
+# 实测悬停时偏航要一直顶 oY≈-30~-100（o2/o3 比 o1/o4 高 ~25%）才不转；
+# ① 偏航前馈 yff：离地就先加上，偏航 PID 不用从 0 慢慢顶；② 混控里偏航优先级最低：
+#    先保横滚/俯仰，偏航只用剩下的余量（顶满时宁可慢慢转，也不让偏航把姿态挤掉而翻）
+rep('#define FW_VER "flight-v16"', '#define FW_VER "flight-v17"')
+rep('static float g_hov = 405.0f;', 'static float g_yff = -60.0f;  // v17 偏航前馈（‰，混控 oY 单位），离地后加，存 NVS\nstatic float g_hov = 405.0f;')
+rep('  prefs.putFloat("hov", g_hov);', '  prefs.putFloat("hov", g_hov); prefs.putFloat("yff", g_yff);')
+rep('    g_hov = prefs.getFloat("hov", g_hov);', '    g_hov = prefs.getFloat("hov", g_hov); g_yff = prefs.getFloat("yff", g_yff);')
+rep('  else if (k == "hov") g_hov = v;', '  else if (k == "hov") g_hov = v;\n  else if (k == "yff") g_yff = (v > 200 ? 200 : (v < -200 ? -200 : v));')
+rep('      else if (!strcmp(k, "hov")) g_hov = v;', '      else if (!strcmp(k, "hov")) g_hov = v;\n      else if (!strcmp(k, "yff")) g_yff = (v > 200 ? 200 : (v < -200 ? -200 : v));')
+rep('\\"bP\\":%.1f,\\"hov\\":%.1f}",', '\\"bP\\":%.1f,\\"hov\\":%.1f,\\"yff\\":%.1f}",')
+rep('(double)g_bR, (double)g_bP, (double)g_hov);', '(double)g_bR, (double)g_bP, (double)g_hov, (double)g_yff);')
+rep('''  float oY = (P.yp > 0.001f) ? pidY.step(spY, g_gy, dt, IMAX, DFC) : 0.0f;''',
+    '''  float oY = (P.yp > 0.001f) ? pidY.step(spY, g_gy, dt, IMAX, DFC) : 0.0f;
+  if (P.yp > 0.001f && thr >= g_iThr) oY += g_yff;   // v17 偏航前馈''')
+rep('''  float c[4];
+  c[0] = -oP + oR + oY;
+  c[1] = -oP - oR - oY;
+  c[2] =  oP + oR - oY;
+  c[3] =  oP - oR + oY;
+
+  // 饱和缩放：顶到上下限时按比例缩小控制量，而不是丢掉控制权
+  float mx = 0;
+  for (int i = 0; i < 4; i++) if (fabsf(c[i]) > mx) mx = fabsf(c[i]);
+  if (mx > 1.0f) {
+    const float roomUp   = (float)(P.mthr - thr);
+    const float roomDown = (float)thr;
+    float room = roomUp < roomDown ? roomUp : roomDown;
+    if (room < 1.0f) room = 1.0f;
+    float sc = room / mx;
+    if (sc > 1.0f) sc = 1.0f;
+    if (sc < 0.12f) sc = 0.12f;              // 保留最低控制权，宁可短暂饱和
+    for (int i = 0; i < 4; i++) c[i] *= sc;
+  }
+  for (int i = 0; i < 4; i++) {
+    int v = thr + (int)lrintf(c[i]);''', '''  // v17：先排横滚/俯仰，偏航只用剩下的余量
+  static const float sy[4] = {1.0f, -1.0f, -1.0f, 1.0f};
+  float c[4];
+  c[0] = -oP + oR;
+  c[1] = -oP - oR;
+  c[2] =  oP + oR;
+  c[3] =  oP - oR;
+  const float roomUp   = (float)(P.mthr - thr);
+  const float roomDown = (float)thr;
+
+  // 饱和缩放：顶到上下限时按比例缩小控制量，而不是丢掉控制权
+  float mx = 0;
+  for (int i = 0; i < 4; i++) if (fabsf(c[i]) > mx) mx = fabsf(c[i]);
+  if (mx > 1.0f) {
+    float room = roomUp < roomDown ? roomUp : roomDown;
+    if (room < 1.0f) room = 1.0f;
+    float sc = room / mx;
+    if (sc > 1.0f) sc = 1.0f;
+    if (sc < 0.12f) sc = 0.12f;              // 保留最低控制权，宁可短暂饱和
+    for (int i = 0; i < 4; i++) c[i] *= sc;
+  }
+  // 偏航：每个电机按被推的方向算还剩多少余量，取最小，超出的偏航先不给
+  float lim = 1e9f;
+  const float sg = oY >= 0 ? 1.0f : -1.0f;
+  for (int i = 0; i < 4; i++) {
+    const float rm = (sy[i] * sg > 0) ? (roomUp - c[i]) : (roomDown + c[i]);
+    if (rm < lim) lim = rm;
+  }
+  if (lim < 0) lim = 0;
+  float y = oY; if (y > lim) y = lim; if (y < -lim) y = -lim;
+  for (int i = 0; i < 4; i++) c[i] += sy[i] * y;
+  for (int i = 0; i < 4; i++) {
+    int v = thr + (int)lrintf(c[i]);''')
 open(dst, 'w', encoding='utf-8').write(t)
 print('ok')
