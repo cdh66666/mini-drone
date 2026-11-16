@@ -127,33 +127,43 @@ h2{margin:0;font-size:24px}
 .ctl,.setup{display:flex;flex-direction:column;gap:10px}
 .setup .trim{justify-content:center}
 /* 窗口不够宽：油门+仪表一排；下面一排「安全确认 | 解锁 | 降落」；再下面配平和偏航并排 */
-@media (max-width:1150px){
-  .fly{grid-template-columns:84px minmax(0,1fr);flex:none}
-  .fly>.side{grid-column:1/-1}
-  .ctl{display:grid;grid-template-columns:1fr 1.3fr 1fr;gap:10px}
-  .ctl>*{min-height:60px;justify-content:center}
-  #arm{padding:0;font-size:20px}
-  .setup{display:grid;grid-template-columns:1fr 1fr;align-items:stretch}
-  .khint{display:none}
-  .stage{padding:14px 16px}
-  .thr{min-height:300px}
-}
-@media (max-width:560px){
-  .ctl{grid-template-columns:1fr 1fr}
-  .ctl #btnLand{grid-column:1/-1;min-height:48px}
-  .inst{flex-wrap:nowrap;justify-content:space-around;gap:2px;padding:10px 4px;flex:none}
-  .thr{min-height:200px}
-  .inst .level.sm,.inst .ibox>svg,#liveMap{width:64px!important;height:64px!important}
-  .inst .ibox{max-width:33%}
+/* 紧凑：一屏放下全部，不用上下滑。油门竖在左边贯穿；右边从上到下 仪表一排 → 电机条 → 确认|解锁|降落 → 配平|偏航 */
+@media (max-width:1150px),(max-height:760px){
+  .stage{padding:10px 12px;overflow:hidden}
+  .step[data-s="3"]{gap:0}
+  .fly{grid-template-columns:64px minmax(0,1fr);grid-template-rows:auto auto 1fr;gap:8px;flex:1;min-height:0}
+  .thr{grid-row:1/4;min-height:0;padding:8px 0;gap:6px}
+  .thr .pct{font-size:22px}
+  #thr{width:48px}
+  .tk input{width:36px}
+  .mid{grid-column:2;gap:8px}
+  .fly>.side{grid-column:2;gap:8px;min-height:0}
+  .inst{flex:none;flex-wrap:nowrap;justify-content:space-around;gap:4px;padding:8px 4px}
+  .inst .ibox{flex:0 1 auto;min-width:0;gap:2px}
+  .inst .level.sm,.inst .ibox>svg,#liveMap{width:clamp(48px,min(13vh,16vw),96px)!important;height:clamp(48px,min(13vh,16vw),96px)!important}
   .inst .level.sm .bub{width:18px;height:18px;margin:-9px}
   .inst .level.sm .ring{width:26px;height:26px;margin:-13px}
   .zbar{display:none}
-  .inst .ibox{flex:0 0 auto}
   .inst .camv{flex-basis:100%}
   .inst:has(.camv:not([hidden])){flex-wrap:wrap}
+  .camv img{max-height:22vh}
   .inst .cap{font-size:11px;text-align:center}
-  .mrow{gap:6px;padding:8px 10px}.mrow .bar{width:auto;flex:1}
+  .mrow{gap:6px;padding:6px 10px}.mrow .bar{width:auto;flex:1}
   .mrow .grow{display:none}
+  .ctl{display:grid;grid-template-columns:1fr 1.3fr 1fr;gap:8px}
+  .ctl>*{min-height:48px;justify-content:center;padding:6px}
+  #arm{padding:0;font-size:19px}
+  .setup{display:grid;grid-template-columns:1fr 1fr;gap:8px;align-items:stretch}
+  .setup .trim{padding:6px;gap:4px}
+  .setup .trim>.dim{display:none}
+  .tpad{grid-template-columns:repeat(3,34px);gap:4px}
+  .tpad button{height:30px}
+  .khint{display:none}
+}
+@media (max-width:460px){
+  .ctl{grid-template-columns:1fr 1fr}
+  .ctl #btnLand{grid-column:1/-1;min-height:40px}
+  .tog{font-size:14px;gap:6px;padding:6px}
 }
 @media (max-width:640px){
   main{grid-template-columns:64px 1fr}
