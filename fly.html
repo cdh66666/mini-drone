@@ -125,6 +125,10 @@ h2{margin:0;font-size:24px}
 .inst{min-width:0}
 .camv[hidden]{display:none}
 .ctl,.setup{display:flex;flex-direction:column;gap:10px}
+.amp{display:flex;align-items:center;gap:10px;background:var(--card);border-radius:12px;padding:6px 12px}
+.amp .cap{white-space:nowrap}
+.amp input{flex:1;min-width:0;accent-color:var(--acc);height:26px;cursor:pointer}
+.amp b{min-width:40px;text-align:right;font-size:15px}
 .setup .trim{justify-content:center}
 /* 窗口不够宽：油门+仪表一排；下面一排「安全确认 | 解锁 | 降落」；再下面配平和偏航并排 */
 /* 紧凑：一屏放下全部，不用上下滑。油门竖在左边贯穿；右边从上到下 仪表一排 → 电机条 → 确认|解锁|降落 → 配平|偏航 */
@@ -336,6 +340,7 @@ h2{margin:0;font-size:24px}
         <button class="okb" id="arm">🔓 解锁</button>
         <button class="ghost" id="btnLand">⬇ 降落<small class="dim" style="font-size:12px;margin-left:4px">空格</small></button>
       </div>
+      <div class="amp"><span class="cap">方向幅度</span><input type="range" id="amp" min="0.04" max="0.6" step="0.02"><b id="ampTxt">--</b></div>
       <div class="setup">
       <div class="trim">
         <div class="cap">配平 <span class="dim" id="trimTxt">--</span></div>
@@ -885,6 +890,14 @@ $('#arm').addEventListener('click',()=>{
 function land(){ if(st.armed&&!st.landing){st.landing=true;st.landT=performance.now();st.landFrom=st.cmd;toast('⬇ 降落中（再按空格 = 急停）');} }
 $('#btnLand').addEventListener('click',land);
 
+/* 方向幅度滑条：WASD 按下时给多大杆量，飞行中也能拖，记在本机 */
+const ampEl=$('#amp'); ampEl.value=lsGet('fly.amp',0.24);
+function ampV(){ return +ampEl.value||0.24; }
+function ampShow(){ $('#ampTxt').textContent=Math.round(ampV()*(curP&&curP.mang?curP.mang:25)*10)/10+'°'; }
+ampEl.addEventListener('input',ampShow);
+ampEl.addEventListener('change',()=>{ lsSet('fly.amp',ampV()); ampShow(); ampEl.blur(); });
+ampShow(); setInterval(ampShow,2000);
+
 /* 心跳：解锁后每 100ms 发一次油门 + 方向（固件 0.9 秒收不到会自停） */
 const keys={};
 setInterval(()=>{
@@ -893,7 +906,7 @@ setInterval(()=>{
     st.target=Math.max(0,st.landFrom*(1-u*u)); st.cmd=Math.min(st.cmd,st.target); thr.value=Math.round(st.target); if(st.target<=0&&st.cmd<=0){ send('A,0'); armedUI(false); toast('落地 ✓'); return; } }
   if(st.target>st.cmd) st.cmd=Math.min(st.target,st.cmd+5);   // 往上最快 50%/秒
   else st.cmd=st.target;                                        // 往下立刻
-  const T=0.24;   // 杆量 × 最大倾角 25° ≈ 6°（3.5° 推不动，8.7° 会冲出去撞）
+  const T=ampV();   // 杆量 × 最大倾角 25°：0.24 ≈ 6°（3.5° 推不动，8.7° 会冲出去撞）
   st.r=(keys.ArrowRight?T:0)-(keys.ArrowLeft?T:0);
   st.p=(keys.ArrowUp?T:0)-(keys.ArrowDown?T:0);   // sgP=-1 后：pitch+ = 1、2 号那边往下 = 往前飞
   send('G,'+Math.round(st.cmd*10));

@@ -389,8 +389,9 @@ def save_bb(host, fault="0"):
     fn = time.strftime("%Y%m%d_%H%M%S") + ".csv"
     open(os.path.join(d, fn), "w", encoding="utf-8").write(txt)
     push("#BB,saved," + fn + "," + str(fault))
-    try: learn_bias(host, txt)
-    except Exception as e: push("#BB,learn_fail," + str(e)[:60])
+    # 11-16 用户要求：重心补偿 bR/bP 不再自动改，只用配平（调平）手动调
+    # try: learn_bias(host, txt)
+    # except Exception as e: push("#BB,learn_fail," + str(e)[:60])
 
 
 def learn_bias(host, txt):
