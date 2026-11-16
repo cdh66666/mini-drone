@@ -123,11 +123,37 @@ h2{margin:0;font-size:24px}
 #toast.show{opacity:1}
 #toast.e{background:#7a1214}
 .inst{min-width:0}
-/* 窗口窄：右栏挪到下面一整排；再窄：侧栏/顶栏收紧 */
-@media (max-width:960px){
-  .fly{grid-template-columns:90px minmax(0,1fr)}
-  .fly>.side{grid-column:1/-1;display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));align-items:start}
+.camv[hidden]{display:none}
+.ctl,.setup{display:flex;flex-direction:column;gap:10px}
+.setup .trim{justify-content:center}
+/* 窗口不够宽：油门+仪表一排；下面一排「安全确认 | 解锁 | 降落」；再下面配平和偏航并排 */
+@media (max-width:1150px){
+  .fly{grid-template-columns:84px minmax(0,1fr);flex:none}
+  .fly>.side{grid-column:1/-1}
+  .ctl{display:grid;grid-template-columns:1fr 1.3fr 1fr;gap:10px}
+  .ctl>*{min-height:60px;justify-content:center}
+  #arm{padding:0;font-size:20px}
+  .setup{display:grid;grid-template-columns:1fr 1fr;align-items:stretch}
+  .khint{display:none}
   .stage{padding:14px 16px}
+  .thr{min-height:300px}
+}
+@media (max-width:560px){
+  .ctl{grid-template-columns:1fr 1fr}
+  .ctl #btnLand{grid-column:1/-1;min-height:48px}
+  .inst{flex-wrap:nowrap;justify-content:space-around;gap:2px;padding:10px 4px;flex:none}
+  .thr{min-height:200px}
+  .inst .level.sm,.inst .ibox>svg,#liveMap{width:64px!important;height:64px!important}
+  .inst .ibox{max-width:33%}
+  .inst .level.sm .bub{width:18px;height:18px;margin:-9px}
+  .inst .level.sm .ring{width:26px;height:26px;margin:-13px}
+  .zbar{display:none}
+  .inst .ibox{flex:0 0 auto}
+  .inst .camv{flex-basis:100%}
+  .inst:has(.camv:not([hidden])){flex-wrap:wrap}
+  .inst .cap{font-size:11px;text-align:center}
+  .mrow{gap:6px;padding:8px 10px}.mrow .bar{width:auto;flex:1}
+  .mrow .grow{display:none}
 }
 @media (max-width:640px){
   main{grid-template-columns:64px 1fr}
@@ -295,9 +321,12 @@ h2{margin:0;font-size:24px}
     </div>
 
     <div class="side">
-      <div class="tog" id="confirm"><span class="box"></span>安全确认</div>
-      <button class="okb" id="arm">🔓 解锁</button>
-      <button class="ghost" id="btnLand">⬇ 降落</button>
+      <div class="ctl">
+        <div class="tog" id="confirm"><span class="box"></span>安全确认</div>
+        <button class="okb" id="arm">🔓 解锁</button>
+        <button class="ghost" id="btnLand">⬇ 降落</button>
+      </div>
+      <div class="setup">
       <div class="trim">
         <div class="cap">配平 <span class="dim" id="trimTxt">--</span></div>
         <div class="tpad">
@@ -312,8 +341,9 @@ h2{margin:0;font-size:24px}
         <button id="btnSgY" style="width:100%">⇄ 换方向</button>
         <div class="dim" style="font-size:12px;text-align:center">一离地就越转越快 → 点一下换</div>
       </div>
+      </div>
       <div class="keys" style="display:none"><span class="key" id="kU"></span><span class="key" id="kL"></span><span class="key" id="kD"></span><span class="key" id="kR"></span></div>
-      <div class="dim" style="font-size:12px;text-align:center">⏎ 起飞 · 空格 急停 · 方向键 扶正 · W/S 高低</div>
+      <div class="dim khint" style="font-size:12px;text-align:center">⏎ 起飞 · 空格 急停 · WASD 方向 · ↑↓ 油门</div>
     </div>
   </div>
 </section>
@@ -870,20 +900,23 @@ $('#estop').addEventListener('click',estop);
 window.addEventListener('blur',()=>{ if(st.armed) estop(); });
 document.addEventListener('visibilitychange',()=>{ if(document.hidden&&st.armed) estop(); });
 
-/* 键盘：空格急停；W/S 油门；方向键 */
+/* 键盘：空格急停；WASD 方向（按物理键位，中文输入法/大写也认）；↑↓ 油门 */
 const KEYMAP={ArrowUp:'kU',ArrowDown:'kD',ArrowLeft:'kL',ArrowRight:'kR'};
+const WASD={KeyW:'ArrowUp',KeyS:'ArrowDown',KeyA:'ArrowLeft',KeyD:'ArrowRight'};
 window.addEventListener('keydown',e=>{
   if(e.target&&e.target.tagName==='INPUT'&&e.target.type!=='range'){ if(e.key==='Enter'&&e.target.id==='pw') $('#btnJoin').click(); return; }
   if(e.code==='Space'){e.preventDefault();estop();return;}
-  if(KEYMAP[e.key]){e.preventDefault();keys[e.key]=true;$('#'+KEYMAP[e.key]).classList.add('on');return;}
+  const k=WASD[e.code];
+  if(k){e.preventDefault();keys[k]=true;$('#'+KEYMAP[k]).classList.add('on');return;}
   if(e.key==='Enter'){e.preventDefault();if(cur===3)takeoff();return;}
-  if(cur===3&&(e.key==='w'||e.key==='W')){thr.value=Math.min(100,+thr.value+1);st.target=+thr.value;st.landing=false;}
-  if(cur===3&&(e.key==='s'||e.key==='S')){thr.value=Math.max(0,+thr.value-1);st.target=+thr.value;}
+  if(cur===3&&e.code==='ArrowUp'){e.preventDefault();thr.value=Math.min(100,+thr.value+1);st.target=+thr.value;st.landing=false;}
+  if(cur===3&&e.code==='ArrowDown'){e.preventDefault();thr.value=Math.max(0,+thr.value-1);st.target=+thr.value;}
 },true);
 window.addEventListener('keyup',e=>{
   if(e.target&&e.target.tagName==='INPUT'&&e.target.type!=='range') return;
   if(e.code==='Space'){e.preventDefault();return;}
-  if(KEYMAP[e.key]){keys[e.key]=false;$('#'+KEYMAP[e.key]).classList.remove('on');}
+  const k=WASD[e.code];
+  if(k){keys[k]=false;$('#'+KEYMAP[k]).classList.remove('on');}
 },true);
 
 /* ---------------- 手感 ---------------- */
