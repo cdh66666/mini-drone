@@ -967,5 +967,19 @@ rep('''  float c[4];
   for (int i = 0; i < 4; i++) c[i] += sy[i] * y;
   for (int i = 0; i < 4; i++) {
     int v = thr + (int)lrintf(c[i]);''')
+# v17 诊断：/api/ver 带开机时长 up(ms)、上次重启原因 rr（esp_reset_reason：1 上电 3 软件 4 异常 9 欠压…）、开机次数 bc
+rep('''void setup() {
+  boardInit();''', '''static uint32_t g_bootCnt = 0; static int g_rstRsn = 0;
+void setup() {
+  g_rstRsn = (int)esp_reset_reason();
+  prefs.begin("diag", false); g_bootCnt = prefs.getUInt("bc", 0) + 1; prefs.putUInt("bc", g_bootCnt); prefs.end();
+  boardInit();''')
+rep('''  server.on("/api/ver", []() { sendJson("{\\"v\\":\\"" FW_VER "\\"}"); });''',
+    '''  server.on("/api/ver", []() {
+    char j[120];
+    snprintf(j, sizeof(j), "{\\"v\\":\\"" FW_VER "\\",\\"up\\":%lu,\\"rr\\":%d,\\"bc\\":%lu,\\"vb\\":%d}",
+             (unsigned long)millis(), g_rstRsn, (unsigned long)g_bootCnt, (int)vbatMv);
+    sendJson(j);
+  });''')
 open(dst, 'w', encoding='utf-8').write(t)
 print('ok')

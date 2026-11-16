@@ -260,10 +260,9 @@ h2{margin:0;font-size:24px}
     <div class="hint" id="angTxt">--</div>
     <div class="row">
       <button class="big go" id="btnCal">📐 校准水平</button>
-      <button class="big ghost" id="btnDir">🖐 方向检查</button>
       <button class="big okb" id="next1">下一步 →</button>
     </div>
-    <div class="hint">放在平桌上别碰它，点校准。抬机头 → 气泡往 ▲ 跑。</div>
+    <div class="hint">放在平桌上别碰它，点校准。</div>
   </div>
 </section>
 
@@ -751,7 +750,7 @@ function calDone(ok){
 let dirStep=0,dirRes={},dirT=0,dirOn=false,dirBase=null;
 const DIRS=[{k:'nose',txt:'⬆ 把 1、2 号那边抬高一点'},{k:'left',txt:'⬅ 把 1、3 号那边抬高一点'}];
 function dirMsg(s){$('#angTxt').textContent=s;$('#angTxt').style.fontSize='22px';}
-$('#btnDir').addEventListener('click',()=>{
+$('#btnDir')?.addEventListener('click',()=>{   // 11-16 按钮已删（用户测完了），逻辑留着
   if(!S.on){toast('先连接',1);return;}
   if(D.ax==null){toast('还没收到数据，等一秒再点',1);return;}
   dirBase=[D.ax,D.ay];dirStep=0;dirRes={};dirAsk();

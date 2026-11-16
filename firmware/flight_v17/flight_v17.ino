@@ -2944,7 +2944,10 @@ static void handleLine(char* s) {
 }
 
 // ---------------------------------------------------------------- setup
+static uint32_t g_bootCnt = 0; static int g_rstRsn = 0;
 void setup() {
+  g_rstRsn = (int)esp_reset_reason();
+  prefs.begin("diag", false); g_bootCnt = prefs.getUInt("bc", 0) + 1; prefs.putUInt("bc", g_bootCnt); prefs.end();
   boardInit();
   bb = (BBRec*)malloc(sizeof(BBRec) * BBN);
   Serial.setTxBufferSize(2048);
@@ -2998,7 +3001,12 @@ void setup() {
   server.on("/", []() { server.send_P(200, "text/html; charset=utf-8", PHONE_HTML); });
   server.on("/bench", []() { server.send_P(200, "text/html; charset=utf-8", PAGE_HTML); });
   server.on("/api/imureg", handleImuReg);
-  server.on("/api/ver", []() { sendJson("{\"v\":\"" FW_VER "\"}"); });
+  server.on("/api/ver", []() {
+    char j[120];
+    snprintf(j, sizeof(j), "{\"v\":\"" FW_VER "\",\"up\":%lu,\"rr\":%d,\"bc\":%lu,\"vb\":%d}",
+             (unsigned long)millis(), g_rstRsn, (unsigned long)g_bootCnt, (int)vbatMv);
+    sendJson(j);
+  });
   // favicon 不许落进 302，否则浏览器每次都拉一遍整页
   server.on("/favicon.ico", []() { server.send(204, "text/plain", ""); });
   server.on("/api/state", handleState);
