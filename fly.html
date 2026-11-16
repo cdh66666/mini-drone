@@ -125,6 +125,13 @@ h2{margin:0;font-size:24px}
 .inst{min-width:0}
 .camv[hidden]{display:none}
 .ctl,.setup{display:flex;flex-direction:column;gap:10px}
+.mrec{display:flex;flex-direction:column;gap:8px}
+.mr{display:flex;align-items:center;gap:6px;flex-wrap:nowrap}
+.mr b{width:30px;flex:none}
+.mr select{font:inherit;font-size:14px;padding:5px 6px;border-radius:8px;border:1px solid var(--line);background:#0f1318;color:var(--fg)}
+.mr .mdir{padding:5px 10px;font-size:14px;border-radius:8px}
+.mr .mdir.on{background:var(--acc);color:#fff}
+.mr .mres{font-size:13px}
 .amp{display:flex;align-items:center;gap:10px;background:var(--card);border-radius:12px;padding:6px 12px}
 .amp .cap{white-space:nowrap}
 .amp input{flex:1;min-width:0;accent-color:var(--acc);height:26px;cursor:pointer}
@@ -163,6 +170,12 @@ h2{margin:0;font-size:24px}
   .tpad{grid-template-columns:repeat(3,34px);gap:4px}
   .tpad button{height:30px}
   .khint{display:none}
+  .step[data-s="2"]{gap:10px}
+  .step[data-s="2"] .warnbar{font-size:16px;padding:8px 14px}.step[data-s="2"] .warnbar .i{font-size:22px}
+  .step[data-s="2"] .row{gap:14px!important;flex-wrap:nowrap}
+  .step[data-s="2"] .frame{zoom:.62;flex:none}
+  .step[data-s="2"] .tog{padding:8px 12px}
+  .mrec{padding:10px;gap:6px;font-size:14px}
 }
 @media (max-width:460px){
   .ctl{grid-template-columns:1fr 1fr}
@@ -273,10 +286,14 @@ h2{margin:0;font-size:24px}
     </div>
     <div style="display:flex;flex-direction:column;gap:14px;flex:1;min-width:260px">
       <div class="tog" id="tgNoProp"><span class="box"></span>✂️ 桨已拆</div>
-      <div class="card" style="display:flex;flex-direction:column;gap:10px">
-        <div>① 点 1 → 2 → 3 → 4，每个转 1.5 秒</div>
-        <div>② 看实物转向跟图上箭头一样吗？</div>
-        <div class="hint">反了 → 对调这个电机的两根线（软件改不了）</div>
+      <div class="card mrec">
+        <div>点一个电机 → 记下<b>实际转的是哪个位置</b>和<b>转向</b>（从上往下看），点了自动保存</div>
+        <div class="mr" data-m="1"><b>M1</b><select class="mpos"></select><button class="mdir" data-d="cw">↻ 顺</button><button class="mdir" data-d="ccw">↺ 逆</button><span class="mres"></span></div>
+        <div class="mr" data-m="2"><b>M2</b><select class="mpos"></select><button class="mdir" data-d="cw">↻ 顺</button><button class="mdir" data-d="ccw">↺ 逆</button><span class="mres"></span></div>
+        <div class="mr" data-m="3"><b>M3</b><select class="mpos"></select><button class="mdir" data-d="cw">↻ 顺</button><button class="mdir" data-d="ccw">↺ 逆</button><span class="mres"></span></div>
+        <div class="mr" data-m="4"><b>M4</b><select class="mpos"></select><button class="mdir" data-d="cw">↻ 顺</button><button class="mdir" data-d="ccw">↺ 逆</button><span class="mres"></span></div>
+        <div class="hint" id="mrecTime">还没记录</div>
+        <div class="hint" style="font-size:13px">位置不对 → 插头插错了；转向：四个全跟图反也能飞（桨也反着装，偏航方向点「换方向」），只有一两个反才要对调线</div>
       </div>
       <div class="row">
         <button class="ghost" id="btnAll">四个一起 1.5 秒</button>
@@ -810,6 +827,35 @@ function jog(ch,ms){
   clearTimeout(jogT);jogT=setTimeout(()=>$$('.mot').forEach(m=>m.classList.remove('spin')),ms);
 }
 $$('.mot').forEach(m=>m.addEventListener('click',()=>jog(+m.dataset.m,1500)));
+
+/* 电机测试记录：位置 + 转向，存本机，同时写进电脑 notes.log（Claude 能读） */
+const POS=['左前','右前','左后','右后'], WANT={1:'ccw',2:'cw',3:'cw',4:'ccw'};
+let mrec=lsGet('fly.motrec',null)||{time:'',m:{1:{},2:{},3:{},4:{}}};
+function mrecShow(){
+  $$('.mr').forEach(r=>{
+    const k=r.dataset.m,v=mrec.m[k]||{};
+    r.querySelector('.mpos').value=v.pos||'';
+    r.querySelectorAll('.mdir').forEach(b=>b.classList.toggle('on',b.dataset.d===v.dir));
+    const res=[];
+    if(v.pos) res.push(v.pos===POS[k-1]?'<span style="color:var(--ok)">位置✓</span>':'<span style="color:var(--bad)">位置✗</span>');
+    if(v.dir) res.push(v.dir===WANT[k]?'<span style="color:var(--ok)">同图</span>':'<span style="color:var(--warn)">跟图反</span>');
+    r.querySelector('.mres').innerHTML=res.join(' ');
+  });
+  $('#mrecTime').textContent=mrec.time?('上次记录：'+mrec.time):'还没记录';
+}
+function mrecSave(){
+  mrec.time=new Date().toLocaleString('zh-CN',{hour12:false});
+  lsSet('fly.motrec',mrec); mrecShow();
+  const s=[1,2,3,4].map(k=>'M'+k+'='+((mrec.m[k]||{}).pos||'?')+'/'+((mrec.m[k]||{}).dir||'?')).join(' ');
+  if(/^https?:$/.test(location.protocol)) fetch('/api/note?t='+encodeURIComponent('MOTOR '+s)).catch(()=>{});
+}
+$$('.mr').forEach(r=>{
+  const k=r.dataset.m, sel=r.querySelector('.mpos');
+  sel.innerHTML='<option value="">实际位置?</option>'+POS.map(p=>'<option>'+p+'</option>').join('');
+  sel.addEventListener('change',()=>{ (mrec.m[k]=mrec.m[k]||{}).pos=sel.value; mrecSave(); sel.blur(); });
+  r.querySelectorAll('.mdir').forEach(b=>b.addEventListener('click',()=>{ (mrec.m[k]=mrec.m[k]||{}).dir=b.dataset.d; mrecSave(); }));
+});
+mrecShow();
 $('#btnAll').addEventListener('click',()=>jog(0,1500));
 setInterval(motEnable,500);
 
