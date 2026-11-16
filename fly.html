@@ -882,14 +882,14 @@ $('#arm').addEventListener('click',()=>{
   if(+thr.value>0){toast('油门先拉到 0',1);return;}
   send('X');send('A,1');
 });
-function land(){ if(st.armed&&!st.landing){st.landing=true;st.landT=performance.now();st.landFrom=st.cmd;toast('⬇ 降落中，2 秒落地（再按空格 = 急停）');} }
+function land(){ if(st.armed&&!st.landing){st.landing=true;st.landT=performance.now();st.landFrom=st.cmd;toast('⬇ 降落中（再按空格 = 急停）');} }
 $('#btnLand').addEventListener('click',land);
 
 /* 心跳：解锁后每 100ms 发一次油门 + 方向（固件 0.9 秒收不到会自停） */
 const keys={};
 setInterval(()=>{
   if(!st.armed||!S.on)return;
-  if(st.landing){ const u=Math.min(1,(performance.now()-st.landT)/2000);   // 2 秒落地：先慢后快（1 - u²）
+  if(st.landing){ const u=Math.min(1,(performance.now()-st.landT)/500);   // 0.5 秒落地：先慢后快（1 - u²）
     st.target=Math.max(0,st.landFrom*(1-u*u)); st.cmd=Math.min(st.cmd,st.target); thr.value=Math.round(st.target); if(st.target<=0&&st.cmd<=0){ send('A,0'); armedUI(false); toast('落地 ✓'); return; } }
   if(st.target>st.cmd) st.cmd=Math.min(st.target,st.cmd+5);   // 往上最快 50%/秒
   else st.cmd=st.target;                                        // 往下立刻
