@@ -116,6 +116,8 @@ button{font:inherit;color:inherit}
   <h3>设置</h3>
   <div class="sec"><div class="lab">一键起飞油门<i>60% 浮不出地效，默认 64%</i></div>
     <button class="sb" id="km">−</button><b class="big" id="kv" style="width:56px;text-align:center">64%</b><button class="sb" id="kp">+</button></div>
+  <div class="sec"><div class="lab">校准水平<i>飞机放在平的桌面上、别碰它，再点</i></div>
+    <button class="lk" id="lvl" style="flex:none;padding:10px 18px">⊙ 校准</button></div>
   <div class="sec"><div class="lab">配平（每点 0.1°）<i>总往哪飘就点反方向</i><i id="trimT">--</i></div>
     <div class="tpad">
       <span></span><button class="sb" data-t="P,1">▲</button><span></span>
@@ -288,6 +290,20 @@ Array.prototype.forEach.call(document.querySelectorAll('.tpad button'),function(
   if(S.armed)trimDirty=true;else get('/api/save');
   trimShow();toast((a[0]==='P'?(+a[1]>0?'往前':'往后'):(+a[1]>0?'往右':'往左'))+' 0.1° ✓');
 });});
+/* 校准水平：把现在的倾角记进配平并存盘（固件 /api/level 在控制任务里做） */
+$('#lvl').onclick=async function(){
+  var b=this;if(b.disabled)return;
+  if(!S.on){toast('还没连上飞机',1);return;}
+  if(S.armed){toast('飞行中不能校准',1);return;}
+  if(S.f&1){toast('IMU 异常，先断电重启',1);return;}
+  if(Math.abs(S.roll)>12||Math.abs(S.pitch)>12){toast('歪得太多（>12°），放平再点',1);return;}
+  b.disabled=true;txt(b,'校准中…');
+  var r=await get('/api/level');
+  if(r&&r.ok){await new Promise(function(f){setTimeout(f,400);});r=await get('/api/save');}
+  if(r&&r.ok){var p=await get('/api/params');if(p&&typeof p.trimR==='number')P=p;trimShow();toast('水平已校准 ✓');buzz(40);}
+  else toast('没成功，再点一次',1);
+  b.disabled=false;txt(b,'⊙ 校准');
+};
 $('#fs').onclick=function(){var d=document.documentElement;
   try{(d.requestFullscreen||d.webkitRequestFullscreen).call(d).then(function(){try{screen.orientation.lock('landscape').catch(function(){});}catch(e){}}).catch(function(){});}catch(e){}};
 document.addEventListener('contextmenu',function(e){e.preventDefault();});
