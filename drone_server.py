@@ -436,6 +436,7 @@ def learn_bias(host, txt):
 
 
 PENDING = os.path.join(HERE, "pending.json")
+TUNE_LOCK = threading.Lock()
 
 
 def run_pending():
@@ -575,14 +576,16 @@ class H(BaseHTTPRequestHandler):
             return self._json({"ok": 1})
         if u.path == "/api/tune":    # 基准参数；?set=k&v=v 改一项（调试台「参数」页用）
             fn = os.path.join(HERE, "tune.json")
-            try: j = json.load(open(fn, encoding="utf-8"))
-            except Exception: j = {}
-            k, v = q.get("set", [""])[0], q.get("v", [""])[0]
-            if k in ("rp", "pp", "rd", "pd", "ri", "pi", "angP", "yff") and v:
-                try:
-                    j[k] = float(v)
-                    with open(fn, "w", encoding="utf-8") as f: json.dump(j, f, ensure_ascii=False)
-                except ValueError: pass
+            with TUNE_LOCK:   # 页面会同时发 rp/pp 两个请求：加锁 + 原子替换，读坏了绝不写回
+                try: j = json.load(open(fn, encoding="utf-8"))
+                except Exception: return self._json({"err": "tune.json 读不了"})
+                k, v = q.get("set", [""])[0], q.get("v", [""])[0]
+                if k in ("rp", "pp", "rd", "pd", "ri", "pi", "angP", "yff") and v:
+                    try:
+                        j[k] = float(v)
+                        with open(fn + ".tmp", "w", encoding="utf-8") as f: json.dump(j, f, ensure_ascii=False)
+                        os.replace(fn + ".tmp", fn)
+                    except ValueError: pass
             return self._json(j)
         if u.path == "/api/flash":
             return self._json(flash())

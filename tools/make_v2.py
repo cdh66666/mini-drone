@@ -981,5 +981,18 @@ rep('''  server.on("/api/ver", []() { sendJson("{\\"v\\":\\"" FW_VER "\\"}"); })
              (unsigned long)millis(), g_rstRsn, (unsigned long)g_bootCnt, (int)vbatMv);
     sendJson(j);
   });''')
+# v17 电压补偿也作用到姿态/偏航纠正量（以前只补油门 → 电越低越软、扶不住）
+rep('''  if (g_vcomp && vbatMv > 3000 && thr > 0) {
+    float vc = 3950.0f / (float)vbatMv;
+    if (vc < 0.92f) vc = 0.92f; if (vc > 1.2f) vc = 1.2f;
+    thr = (int)(thr * vc); if (thr > P.mthr) thr = P.mthr;
+  }''', '''  float vcc = 1.0f;   // v17：同一个系数也乘到纠正量上
+  if (g_vcomp && vbatMv > 3000 && thr > 0) {
+    float vc = 3950.0f / (float)vbatMv;
+    if (vc < 0.92f) vc = 0.92f; if (vc > 1.2f) vc = 1.2f;
+    thr = (int)(thr * vc); if (thr > P.mthr) thr = P.mthr;
+    vcc = vc;
+  }''')
+rep('''  mixOutput(thr, oR * k, oP * k, oY * k, o);''', '''  mixOutput(thr, oR * k * vcc, oP * k * vcc, oY * k * vcc, o);''')
 open(dst, 'w', encoding='utf-8').write(t)
 print('ok')

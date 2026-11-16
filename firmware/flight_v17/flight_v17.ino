@@ -663,10 +663,12 @@ static void controlStep(float dt) {
       }
     }
   }
+  float vcc = 1.0f;   // v17：同一个系数也乘到纠正量上
   if (g_vcomp && vbatMv > 3000 && thr > 0) {
     float vc = 3950.0f / (float)vbatMv;
     if (vc < 0.92f) vc = 0.92f; if (vc > 1.2f) vc = 1.2f;
     thr = (int)(thr * vc); if (thr > P.mthr) thr = P.mthr;
+    vcc = vc;
   }
 
   // 控制权限随油门渐入：台面上（油门≈0）姿态环不介入，四路同速、不抖；
@@ -777,7 +779,7 @@ static void controlStep(float dt) {
   dbg.thr = (float)thr; dbg.auth = k;
 
   int o[4];
-  mixOutput(thr, oR * k, oP * k, oY * k, o);
+  mixOutput(thr, oR * k * vcc, oP * k * vcc, oY * k * vcc, o);
   writeMotors(o);
   if (bb && !bbFrozen) {
     BBRec& r = bb[bbHead];
