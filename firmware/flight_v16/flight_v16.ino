@@ -256,6 +256,8 @@ static float fg[3] = {0, 0, 0};      // 陀螺低通
 static bool  zeroReq = false;
 static volatile uint32_t g_zeroMs = 0;
 static volatile bool levelReq = false;
+static volatile bool imuDumpReq = false;
+static char imuDump[520] = "";
 
 static bool imuW(uint8_t reg, uint8_t v) {
   Wire.beginTransmission(IMU); Wire.write(reg); Wire.write(v);
@@ -507,6 +509,24 @@ static void controlStep(float dt) {
     g_roll = rollF; g_pitch = pitchF; g_yaw = yawF;
   }
 
+  if (imuDumpReq) {
+    imuDumpReq = false;
+    uint8_t r[0x61]; memset(r, 0xEE, sizeof(r));
+    bool ok = true;
+    for (int a = 0; a < 0x61; a += 16) { const int n = (0x61 - a) < 16 ? (0x61 - a) : 16; ok &= imuR(a, r + a, n); }
+    uint8_t q[12] = {0}; const bool okq = imuR(0x35, q, 12);
+    float fa[3] = {0, 0, 0}, fg2[3] = {0, 0, 0}; const bool okf = imuRead(fa, fg2);
+    char* p = imuDump; int left = sizeof(imuDump);
+    int w = snprintf(p, left, "{\"r35\":\"%d:%02X%02X%02X%02X%02X%02X\",\"rd\":\"%d:%.3f,%.3f,%.3f\",",
+                     okq ? 1 : 0, q[0], q[1], q[2], q[3], q[4], q[5], okf ? 1 : 0, (double)fa[0], (double)fa[1], (double)fa[2]);
+    p += w; left -= w;
+    w = snprintf(p, left, "\"ok\":%d,\"ts\":%u,\"temp\":%.2f,\"st0\":\"%02X\",\"st1\":\"%02X\",\"regs\":\"",
+                     ok ? 1 : 0, (unsigned)(r[0x30] | (r[0x31] << 8) | (r[0x32] << 16)),
+                     (double)((int8_t)r[0x34] + r[0x33] / 256.0f), r[0x2E], r[0x2F]);
+    p += w; left -= w;
+    for (int a = 0; a < 0x61 && left > 4; a++) { w = snprintf(p, left, "%02X", r[a]); p += w; left -= w; }
+    snprintf(p, left, "\"}");
+  }
   // ---- 零偏标定（控制任务里做，避免 I2C 跨任务竞争）----
   if (zeroReq) {
     zeroReq = false;
@@ -2153,6 +2173,11 @@ static void handleStop() {
   sendJson("{\"ok\":1}");
 }
 
+static void handleImuReg() {
+  imuDump[0] = 0; imuDumpReq = true;
+  for (int i = 0; i < 40 && !imuDump[0]; i++) delay(5);
+  sendJson(imuDump[0] ? imuDump : "{\"ok\":0}");
+}
 static void handleZero() {
   if (g_armed) { server.send(409, "text/plain", "armed"); return; }
   zeroReq = true;
@@ -2940,6 +2965,7 @@ void setup() {
 
   server.on("/", []() { server.send_P(200, "text/html; charset=utf-8", PHONE_HTML); });
   server.on("/bench", []() { server.send_P(200, "text/html; charset=utf-8", PAGE_HTML); });
+  server.on("/api/imureg", handleImuReg);
   server.on("/api/ver", []() { sendJson("{\"v\":\"" FW_VER "\"}"); });
   // favicon 不许落进 302，否则浏览器每次都拉一遍整页
   server.on("/favicon.ico", []() { server.send(204, "text/plain", ""); });
