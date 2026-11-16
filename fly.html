@@ -391,7 +391,7 @@ const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const MOCK=/[?&]mock/.test(location.search);
 
 /* ---------------- 默认参数（资料包 flight_v1 默认那组） ---------------- */
-const BASE={angP:6.0,rp:3.0,ri:0.15,rd:0.06,pp:3.0,pi:0.15,pd:0.06,yp:0,idle:0,mthr:700,iThr:250};
+const BASE={angP:6.0,rp:3.0,ri:0.15,rd:0.06,pp:3.0,pi:0.15,pd:0.06,yp:0,idle:0,mthr:950,iThr:250};
 if(/^https?:$/.test(location.protocol)) fetch('/api/tune').then(r=>r.json()).then(j=>{Object.assign(BASE,j);}).catch(()=>{});
 function calcPid(a,b){
   const s=1+0.1*a;            // 稳 ↔ 灵：0.6 ~ 1.4
