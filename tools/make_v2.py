@@ -1239,5 +1239,14 @@ rep('static volatile int      g_spin = 0;', 'static volatile int      g_spin = 0
 rep('''  if (g_mode == M_SPIN) {
     int o[4] = {g_spin, g_spin, g_spin, g_spin};''', '''  if (g_mode == M_SPIN) {
     int o[4] = {g_spin, g_spin, g_spin, g_spin};   // 原始占空比（不过电压补偿），推力测试要的就是这个''')
+# v18 空中不因低电量上锁（用户要求）：这块电池大油门会压到 3.2 V，以前 <3250 mV 立即上锁 = 空中断电。
+# 现在：低于 3250 mV 只置警告位 0x10；只有在地上（油门低于 iThr）且持续 1 秒才上锁。
+rep('''  if (vbatMv > 1000 && vbatMv < 3250) { disarm(F_BATT); return; }''', '''  {
+    static uint32_t lowMs = 0;
+    if (vbatMv > 1000 && vbatMv < 3250) { if (!lowMs) lowMs = nowMs; } else lowMs = 0;
+    if (lowMs) g_fault |= 0x10;   // 低电量警告（不上锁）
+    const int thrNow = P.idle + (int)((float)g_thr * (float)(P.mthr - P.idle) / 1000.0f);
+    if (lowMs && nowMs - lowMs > 1000 && thrNow < g_iThr) { disarm(F_BATT); return; }   // 只在地上才因低电量上锁
+  }''')
 open(dst, 'w', encoding='utf-8').write(t)
 print('ok')

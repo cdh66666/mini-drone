@@ -599,6 +599,9 @@ function onLine(l){
   if(l.startsWith('#PARAMS,')){try{gotParams(JSON.parse(l.slice(8)));}catch(e){}return;}
   if(l.startsWith('#ACK,SAVE')){$('#saved').textContent='✓ 已存到飞机';return;}
 }
+// 空中低电量：固件只置 0x10 位提醒，不上锁 → 这里提醒一次
+let lowWarned=false;
+setInterval(()=>{ if(!st.armed){lowWarned=false;return;} if((D.f&16)&&!lowWarned){lowWarned=true;toast('⚠ 电量低，尽快降落',1);} },300);
 function faultTxt(f){
   const t=[];if(f&1)t.push('传感器异常');if(f&2)t.push('信号断了');if(f&4)t.push('倾斜太大');if(f&8)t.push('电池低');return t.join('、');
 }
