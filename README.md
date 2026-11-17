@@ -139,6 +139,32 @@ PCB 各层：[pcb.pdf](docs/hardware/pcb.pdf)（6 页：装配图、BOM、顶层
 
 ---
 
+## 调参测试架（纯 3D 打印）
+
+飞机扣在球头上带桨调姿态：飞不走、翻不了（任意方向限位 ±30°），偏航可以一直转；加一个卡扣就只剩俯仰或横滚。
+4 个打印件，不用轴承、不用螺丝，一根皮筋穿过 PCB 的绑带槽固定。CadQuery 参数化源文件、STL、打印说明见 [`test_stand/`](test_stand/README.md)。
+
+<table>
+<tr>
+<td width="50%"><img src="docs/img/stand_hero.jpg" alt="测试架装配图"></td>
+<td width="50%"><img src="docs/img/stand_side.jpg" alt="测试架侧面剖视"></td>
+</tr>
+<tr>
+<td align="center">三轴模式（球铰），底座可压硬币、胶带贴桌</td>
+<td align="center">侧面剖视：球心离桌 100 mm，重心在球心上方约 18 mm</td>
+</tr>
+<tr>
+<td><img src="docs/img/stand_lock.jpg" alt="单轴卡扣"></td>
+<td><img src="docs/img/stand_exploded.jpg" alt="爆炸图"></td>
+</tr>
+<tr>
+<td align="center">单轴模式：卡扣导槽夹住托板下的鳍</td>
+<td align="center">底座 · 立柱带球头 · 卡扣 · 托板带球窝</td>
+</tr>
+</table>
+
+---
+
 ## 快速开始
 
 1. 装 Python 3.10+：`pip install pyserial numpy opencv-python`
@@ -163,6 +189,7 @@ arduino-cli compile --fqbn esp32:esp32:esp32s3:CDCOnBoot=cdc,FlashSize=8M,PSRAM=
 | `cam_rec.py`、`tools/video_track.py` | 自动录像、录像追踪 |
 | `firmware/flight_vN/` | 各版固件源码（由 `tools/make_v2.py` 生成），`firmware/build/` 编译产物 |
 | `flights/` | 全部飞行记录 |
+| `test_stand/` | 3D 打印调参测试架：`stand.py`（CadQuery 参数化）、`stl/`、打印说明 |
 | `docs/` | 原理图、PCB、图片 |
 | `pack/` | 完整资料包：KiCad 工程、Gerber、BOM、最早的固件和网页 |
 | `backup/` | 刷 v2 前的整片固件备份和原参数 |
