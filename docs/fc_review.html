@@ -47,7 +47,11 @@ svg .m{fill:var(--mute)} svg .mono{font-family:var(--f-mono)}
 table{border-collapse:collapse;width:100%;min-width:760px;font-size:14px}
 th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
 th{font-weight:700;background:var(--bg);position:sticky;top:0}
-td:first-child{color:var(--mute);white-space:nowrap}
+td:first-child{color:var(--mute);white-space:nowrap;position:sticky;left:0;background:var(--panel)}
+th:first-child{position:sticky;left:0;z-index:1}
+th.now{background:var(--acc-soft);color:var(--acc)}
+td.now{background:color-mix(in srgb,var(--acc-soft) 55%,transparent);font-weight:500}
+table{min-width:980px}
 tr:last-child td{border-bottom:0}
 .pill{display:inline-block;font:600 11px var(--f-mono);padding:1px 7px;border-radius:99px;margin-right:4px;white-space:nowrap}
 .pill.bad{background:var(--bad-soft);color:var(--bad)}.pill.warn{background:var(--warn-soft);color:var(--warn)}.pill.ok{background:var(--ok-soft);color:var(--ok)}.pill.acc{background:var(--acc-soft);color:var(--acc)}
@@ -75,7 +79,7 @@ tr:last-child td{border-bottom:0}
   <div class="sec-h"><h2>先说结论</h2></div>
   <div class="find">
     <div><span class="k bad">慢晃，不是振动</span><b>悬停时 75–99% 的晃动能量在 0–5 Hz</b><p>频谱主峰在 1.1–1.4 Hz，就是你看到的“稳不住”。高频振动很少。问题出在控制回路太软、反应慢，不是先加缓冲垫能解决的。</p></div>
-    <div><span class="k warn">回路慢了 4 倍</span><b>控制 250 Hz、陀螺不同步、片内低通没开</b><p>Crazyflie / ESP-Drone 都是 1000 Hz 由 IMU“数据就绪”中断触发、角速度环 500 Hz、二阶 80 Hz 低通。我们延迟大、相位滞后多，增益一提就抖，只能用很软的参数。</p></div>
+    <div><span class="k warn">回路慢了 4 倍 → v18 已对齐</span><b>以前：控制 250 Hz、陀螺不同步、片内低通没开</b><p>Crazyflie / ESP-Drone 都是 1000 Hz 采样、角速度环 500 Hz、二阶 80 Hz 低通。v18 已改成传感器 1 kHz、控制 500 Hz、二阶 80/30 Hz、D 项不滤；剩下的差距是推力线性化和增益。</p></div>
     <div><span class="k ok">CPU 很空</span><b>一圈只用 0.75 ms，余量够上 500–1000 Hz</b><p>读 IMU 占 0.55 ms（I²C 400 kHz），其余计算 0.2 ms。控制任务在核心 1、优先级 5，WiFi 在核心 0，不会被网页、遥测打断。</p></div>
   </div>
 </section>
@@ -133,19 +137,20 @@ tr:last-child td{border-bottom:0}
 <section>
   <div class="sec-h"><h2>同样是空心杯，别人怎么做</h2></div>
   <div class="tbl"><table>
-    <thead><tr><th></th><th>我们 v17</th><th>Crazyflie 2.x</th><th>ESP-Drone（乐鑫）</th><th>Betaflight 小涵道</th></tr></thead>
+    <thead><tr><th></th><th>我们 v17（以前）</th><th class="now">我们 v18（现在）</th><th>Crazyflie 2.x</th><th>ESP-Drone（乐鑫）</th><th>Betaflight 小涵道</th></tr></thead>
     <tbody>
-      <tr><td>控制频率</td><td><span class="pill bad">250 Hz</span>角度、角速度同频</td><td>1000 Hz 主循环，角速度/姿态 500 Hz</td><td>同 Crazyflie</td><td>2–8 kHz</td></tr>
-      <tr><td>触发方式</td><td><span class="pill bad">定时器轮询</span>和 IMU 不同步</td><td>IMU 数据就绪中断 → 传感器任务 → 唤醒控制</td><td>MPU6050 INT 中断 + 信号量</td><td>陀螺中断</td></tr>
-      <tr><td>IMU 输出率</td><td>470 Hz（陀螺 ±512 dps，加计 ±8 g）</td><td>陀螺 1000 Hz、片内带宽 116 Hz</td><td>1000 Hz、片内 DLPF 42/98 Hz</td><td>同陀螺最高率</td></tr>
-      <tr><td>陀螺滤波</td><td><span class="pill warn">一阶 60 Hz</span>片内低通没开</td><td>二阶巴特沃斯 80 Hz</td><td>二阶 80 Hz</td><td>低通 + 动态陷波（FFT 自动找振动峰）</td></tr>
-      <tr><td>加计滤波</td><td>一阶 60 Hz + 卡尔曼</td><td>二阶 30 Hz</td><td>二阶 30 Hz</td><td>—（姿态主要靠陀螺）</td></tr>
-      <tr><td>D 项</td><td>一阶 30 Hz</td><td>默认不额外滤</td><td>默认不额外滤</td><td>D 项低通 80–100 Hz 量级</td></tr>
-      <tr><td>电机 PWM</td><td>20 kHz、10 位</td><td>约 328 kHz、8 位</td><td>15 kHz</td><td>有刷 32 kHz 常见</td></tr>
-      <tr><td>电压补偿</td><td><span class="pill ok">已做</span>油门和纠正量 × 3950/V</td><td>测出“电机电压→推力”三次曲线，反解电压再除以电池电压</td><td>二次曲线反解，同思路</td><td>vbat_sag_compensation</td></tr>
-      <tr><td>推力线性化</td><td><span class="pill bad">没有</span></td><td>同上，输出按推力（牛）算</td><td>同上</td><td>thrust_linear</td></tr>
-      <tr><td>顶满时</td><td><span class="pill ok">已做</span>先保横滚俯仰，偏航让路</td><td>四路一起减掉超出部分，保住差值</td><td>各路单独截断</td><td>airmode</td></tr>
-      <tr><td>角速度增益（换算成 ‰/(°/s)）</td><td>P 0.5</td><td>P ≈ 3.8（250/65535）</td><td>—</td><td>—</td></tr>
+      <tr><td>控制频率</td><td><span class="pill bad">250 Hz</span>角度、角速度同频</td><td class="now"><span class="pill ok">对齐</span>传感器 1000 Hz，控制 500 Hz（可切 250/1000）</td><td>1000 Hz 主循环，角速度/姿态 500 Hz</td><td>同 Crazyflie</td><td>2–8 kHz</td></tr>
+      <tr><td>触发方式</td><td><span class="pill bad">1 ms 节拍</span>和 IMU 不同步</td><td class="now"><span class="pill warn">定时器 1 kHz</span>IMU 1793.6 Hz 输出，数据最多旧 0.56 ms。INT2 没接，用不了中断</td><td>IMU 数据就绪中断 → 传感器任务 → 唤醒控制</td><td>MPU6050 INT 中断 + 信号量</td><td>陀螺中断</td></tr>
+      <tr><td>IMU 输出 / 片内低通</td><td>448 Hz / <span class="pill bad">没开</span></td><td class="now"><span class="pill ok">对齐</span>1793.6 Hz / 开（≈240 Hz）</td><td>陀螺 1000 Hz / 片内 116 Hz</td><td>1000 Hz / DLPF 42 或 98 Hz</td><td>同陀螺最高率</td></tr>
+      <tr><td>陀螺量程</td><td>±512 °/s（翻滚会顶满）</td><td class="now">±2048 °/s</td><td>±2000 °/s</td><td>±2000 °/s</td><td>±2000 °/s</td></tr>
+      <tr><td>陀螺滤波</td><td><span class="pill warn">一阶 60 Hz</span></td><td class="now"><span class="pill ok">对齐</span>二阶 80 Hz（可切回旧）</td><td>二阶巴特沃斯 80 Hz</td><td>二阶 80 Hz</td><td>低通 + 动态陷波（FFT 自动找振动峰）</td></tr>
+      <tr><td>加计滤波</td><td>一阶 60 Hz + 卡尔曼</td><td class="now"><span class="pill ok">对齐</span>二阶 30 Hz + 卡尔曼</td><td>二阶 30 Hz</td><td>二阶 30 Hz</td><td>—（姿态主要靠陀螺）</td></tr>
+      <tr><td>D 项</td><td>一阶 30 Hz</td><td class="now"><span class="pill ok">对齐</span>不滤（可选 30/60/100 Hz）</td><td>默认不额外滤</td><td>默认不额外滤</td><td>D 项低通 80–100 Hz 量级</td></tr>
+      <tr><td>电机 PWM</td><td>20 kHz、10 位</td><td class="now">20 kHz、10 位</td><td>约 328 kHz、8 位</td><td>15 kHz</td><td>有刷 32 kHz 常见</td></tr>
+      <tr><td>电压补偿</td><td><span class="pill ok">已做</span>油门和纠正量 × 3950/V</td><td class="now">同左</td><td>测出“电机电压→推力”三次曲线，反解电压再除以电池电压</td><td>二次曲线反解，同思路</td><td>vbat_sag_compensation</td></tr>
+      <tr><td>推力线性化</td><td><span class="pill bad">没有</span></td><td class="now"><span class="pill bad">还没有</span>要先量推力曲线</td><td>同上，输出按推力（牛）算</td><td>同上</td><td>thrust_linear</td></tr>
+      <tr><td>顶满时</td><td>按比例缩小纠正量，偏航让路</td><td class="now"><span class="pill ok">对齐</span>四路一起往下减，保住差值；偏航仍让路</td><td>四路一起减掉超出部分，保住差值</td><td>各路单独截断</td><td>airmode</td></tr>
+      <tr><td>角速度 P（换算成 ‰/(°/s)）</td><td>0.35 → 0.5</td><td class="now">0.5，待在测试架上往上调</td><td>≈ 3.8（250/65535）</td><td>—</td><td>—</td></tr>
     </tbody>
   </table></div>
   <p class="cap">最后一行最说明问题：Crazyflie 的角速度 P 换算到我们的单位是 3.8，我们只有 0.5。不是它胆子大，是它回路快、滤波相位滞后小，增益才提得上去。我们之前把 P 提到 1.0 就出现 10 Hz 抖动，根子在回路延迟。</p>
