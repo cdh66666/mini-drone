@@ -467,9 +467,13 @@ static bool calibBias(uint32_t ms, uint32_t settleMs) {
   return true;
 }
 
+static volatile uint32_t g_tImu = 0, g_tImuMax = 0, g_tStep = 0, g_tStepMax = 0, g_tJit = 0;
 static void controlStep(float dt) {
   float a[3], gr[3];
+  const int64_t ti0 = esp_timer_get_time();
   const bool ok = imuRead(a, gr);
+  { static uint32_t acc = 0, n = 0, mx = 0; const uint32_t d = (uint32_t)(esp_timer_get_time() - ti0);
+    acc += d; if (d > mx) mx = d; if (++n >= 250) { g_tImu = acc / n; g_tImuMax = mx; acc = n = mx = 0; } }
   if (!ok) { i2cFail++; g_fault |= F_IMU; }
   else {
     // 低通（振动抑制，60 Hz 足够，再低会吃掉相位裕度）
@@ -816,6 +820,11 @@ static void ctrlTask(void*) {
     if (dt > 0.0200f) dt = 0.0200f;
 
     controlStep(dt);
+    { static uint32_t acc = 0, n = 0, mx = 0, jm = 0;
+      const uint32_t d = (uint32_t)(esp_timer_get_time() - now);
+      const uint32_t j = (uint32_t)fabsf(dt * 1e6f - 1e6f / CTRL_HZ);
+      acc += d; if (d > mx) mx = d; if (j > jm) jm = j;
+      if (++n >= 250) { g_tStep = acc / n; g_tStepMax = mx; g_tJit = jm; acc = n = mx = jm = 0; } }
 
     hzAcc++;
     if (now - hzT0 >= 1000000) {
@@ -2014,14 +2023,15 @@ static void buildStateJson(char* j, size_t n) {
            "\"roll\":%.1f,\"pitch\":%.1f,\"yaw\":%.0f,"
            "\"gr\":%.1f,\"gp\":%.1f,\"gy\":%.1f,"
            "\"ax\":%.2f,\"ay\":%.2f,\"az\":%.2f,"
-           "\"hz\":%lu,\"dt\":%.1f,\"f\":%lu,\"imu\":%d}",
+           "\"hz\":%lu,\"dt\":%.1f,\"f\":%lu,\"imu\":%d,\"tm\":[%lu,%lu,%lu,%lu,%lu]}",
            (unsigned long)vbatMv, g_armed ? 1 : 0, (int)g_mode, (int)g_thr, (int)g_spin,
            (int)g_out[0], (int)g_out[1], (int)g_out[2], (int)g_out[3],
            (double)g_roll, (double)g_pitch, (double)g_yaw,
            (double)g_gr, (double)g_gp, (double)g_gy,
            (double)g_ax, (double)g_ay, (double)g_az,
            (unsigned long)g_loopHz, g_loopHz ? (1000.0 / (double)g_loopHz) : 0.0,
-           (unsigned long)g_fault, imuOK ? 1 : 0);
+           (unsigned long)g_fault, imuOK ? 1 : 0,
+           (unsigned long)g_tImu, (unsigned long)g_tImuMax, (unsigned long)g_tStep, (unsigned long)g_tStepMax, (unsigned long)g_tJit);
 }
 
 static void buildParamsJson(char* j, size_t n) {

@@ -994,5 +994,30 @@ rep('''  if (g_vcomp && vbatMv > 3000 && thr > 0) {
     vcc = vc;
   }''')
 rep('''  mixOutput(thr, oR * k, oP * k, oY * k, o);''', '''  mixOutput(thr, oR * k * vcc, oP * k * vcc, oY * k * vcc, o);''')
+rep('''           "\\"hz\\":%lu,\\"dt\\":%.1f,\\"f\\":%lu,\\"imu\\":%d}",''', '''           "\\"hz\\":%lu,\\"dt\\":%.1f,\\"f\\":%lu,\\"imu\\":%d,\\"tm\\":[%lu,%lu,%lu,%lu,%lu]}",''')
+rep('''           (unsigned long)g_fault, imuOK ? 1 : 0);
+}''', '''           (unsigned long)g_fault, imuOK ? 1 : 0,
+           (unsigned long)g_tImu, (unsigned long)g_tImuMax, (unsigned long)g_tStep, (unsigned long)g_tStepMax, (unsigned long)g_tJit);
+}''')
+# v17 计时：控制一圈耗时（平均/最大 us）、读 IMU 耗时、周期最大偏差 → /api/state 的 "tm"
+rep('''static void controlStep(float dt) {
+  float a[3], gr[3];
+  const bool ok = imuRead(a, gr);''', '''static volatile uint32_t g_tImu = 0, g_tImuMax = 0, g_tStep = 0, g_tStepMax = 0, g_tJit = 0;
+static void controlStep(float dt) {
+  float a[3], gr[3];
+  const int64_t ti0 = esp_timer_get_time();
+  const bool ok = imuRead(a, gr);
+  { static uint32_t acc = 0, n = 0, mx = 0; const uint32_t d = (uint32_t)(esp_timer_get_time() - ti0);
+    acc += d; if (d > mx) mx = d; if (++n >= 250) { g_tImu = acc / n; g_tImuMax = mx; acc = n = mx = 0; } }''')
+rep('''    controlStep(dt);
+
+    hzAcc++;''', '''    controlStep(dt);
+    { static uint32_t acc = 0, n = 0, mx = 0, jm = 0;
+      const uint32_t d = (uint32_t)(esp_timer_get_time() - now);
+      const uint32_t j = (uint32_t)fabsf(dt * 1e6f - 1e6f / CTRL_HZ);
+      acc += d; if (d > mx) mx = d; if (j > jm) jm = j;
+      if (++n >= 250) { g_tStep = acc / n; g_tStepMax = mx; g_tJit = jm; acc = n = mx = jm = 0; } }
+
+    hzAcc++;''')
 open(dst, 'w', encoding='utf-8').write(t)
 print('ok')
