@@ -189,7 +189,8 @@ enum Mode { M_IDLE = 0, M_FLY = 1, M_SPIN = 2 };
 static volatile int      g_mode = M_IDLE;
 static volatile bool     g_armed = false;
 static volatile int      g_thr = 0;        // 油门指令 0..1000
-static volatile int      g_spin = 0;       // 起转测试 ppm
+static volatile int      g_spin = 0;
+static bool g_spinRef = false; static float g_spinR0 = 0, g_spinP0 = 0;   // v18 推力测试的参考姿态       // 起转测试 ppm
 static volatile float    g_stkRoll = 0;    // -1..1
 static volatile float    g_stkPitch = 0;   // -1..1
 static volatile float    g_stkYaw = 0;     // -1..1
@@ -637,13 +638,18 @@ static void controlStep(float dt) {
 
   if (g_mode == M_SPIN) {
     if ((int32_t)(nowMs - g_lastStick) > 1000) { disarm(0); }
+    else {   // v18 推力测试：和开转那一刻的姿态比（倒着粘在秤上也能用），变化超过 25° = 松脱了，停
+      if (!g_spinRef) { g_spinRef = true; g_spinR0 = rollF; g_spinP0 = pitchF; }
+      float dr = rollF - g_spinR0; if (dr > 180) dr -= 360; if (dr < -180) dr += 360;
+      if (g_spin > 250 && (fabsf(dr) > 25.0f || fabsf(pitchF - g_spinP0) > 25.0f)) disarm(F_TILT);
+    }
   } else if (g_armed) {
     if ((int32_t)(nowMs - g_lastStick) > 900) disarm(F_LINK);
   }
 
   // ---- 输出 ----
   if (g_mode == M_SPIN) {
-    int o[4] = {g_spin, g_spin, g_spin, g_spin};
+    int o[4] = {g_spin, g_spin, g_spin, g_spin};   // 原始占空比（不过电压补偿），推力测试要的就是这个
     writeMotors(o);
     return;
   }
@@ -2221,6 +2227,16 @@ static void handleStick() {
   sendJson("{\"ok\":1}");
 }
 
+static void handleHSpin() {   // v18 推力测试（WiFi 版的 H,pm）：最高 950‰，1 秒没续命自停
+  if (g_armed) { server.send(409, "text/plain", "armed"); return; }
+  int pm = server.arg("pm").toInt();
+  if (pm < 0) pm = 0; if (pm > 950) pm = 950;
+  if (g_mode != M_SPIN) g_spinRef = false;
+  g_spin = pm;
+  g_mode = pm > 0 ? M_SPIN : M_IDLE;
+  g_lastStick = millis();
+  sendJson("{\"ok\":1}");
+}
 static void handleSpin() {
   if (g_armed) { server.send(409, "text/plain", "armed"); return; }
   int pm = server.arg("pm").toInt();
@@ -2892,6 +2908,19 @@ static void handleLine(char* s) {
     }
     return;
   }
+  if (c == 'H') {
+    int pm = 0;
+    if (sscanf(s, "H,%d", &pm) == 1) {
+      if (g_armed) { Serial.println("#ERR,ARMED"); return; }
+      if (pm < 0) pm = 0; if (pm > 950) pm = 950;
+      if (g_mode != M_SPIN) g_spinRef = false;   // 新的一次：重新记参考姿态
+      g_spin = pm;
+      g_mode = pm > 0 ? M_SPIN : M_IDLE;
+      g_lastStick = millis();
+      Serial.printf("#ACK,H,%d\n", pm);
+    }
+    return;
+  }
   if (c == 'S') {
     int pm = 0;
     if (sscanf(s, "S,%d", &pm) == 1) {
@@ -3101,6 +3130,7 @@ void setup() {
   server.on("/api/arm", handleArm);
   server.on("/api/stick", handleStick);
   server.on("/api/spin", handleSpin);
+  server.on("/api/hspin", handleHSpin);
   server.on("/api/jog", handleJog);
   server.on("/api/stop", handleStop);
   server.on("/api/zero", handleZero);
