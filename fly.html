@@ -133,11 +133,11 @@ h2{margin:0;font-size:24px}
 .mr .mdir.on{background:var(--acc);color:#fff}
 .mr .mres{font-size:13px}
 .ptab{display:flex;flex-direction:column;gap:10px;padding:14px}
-.prow{display:grid;grid-template-columns:90px 36px 64px 36px 1fr;align-items:center;gap:8px}
+.prow{display:grid;grid-template-columns:90px 36px 150px 36px 1fr;align-items:center;gap:8px}
 .prow button{padding:4px 0;font-size:18px;border-radius:8px}
 .prow .pv{text-align:center;font-weight:700;font-size:17px}
 .prow .ph{color:var(--dim);font-size:12px}
-@media (max-width:640px){.prow{grid-template-columns:80px 32px 56px 32px}.prow .ph{grid-column:1/-1;margin-top:-4px}}
+@media (max-width:640px){.prow{grid-template-columns:72px 32px minmax(0,1fr) 32px}.prow .ph{grid-column:1/-1;margin-top:-4px}}
 .amp{display:flex;align-items:center;gap:10px;background:var(--card);border-radius:12px;padding:6px 12px}
 .amp .cap{white-space:nowrap}
 .amp input{flex:1;min-width:0;accent-color:var(--acc);height:26px;cursor:pointer}
@@ -417,7 +417,8 @@ function calcPid(a,b){
   const r=x=>Math.round(x*1000)/1000;
   return {angP:r(BASE.angP*s),rp:r(BASE.rp*s),pp:r(BASE.pp*s),
           rd:r(BASE.rd*s*(2-d)),pd:r(BASE.pd*s*(2-d)),ri:BASE.ri,pi:BASE.pi,
-          yp:BASE.yp,idle:BASE.idle,mthr:BASE.mthr,iThr:BASE.iThr,ya:BASE.ya,yff:BASE.yff};
+          yp:BASE.yp,idle:BASE.idle,mthr:BASE.mthr,iThr:BASE.iThr,ya:BASE.ya,yff:BASE.yff,
+          crate:BASE.crate,lp2:BASE.lp2,dfc:BASE.dfc,cap:BASE.cap};
 }
 function lsGet(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v);}catch(e){return d;}}
 function lsSet(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}}
@@ -613,9 +614,9 @@ $('#btnOrig').addEventListener('click',()=>{
 function pushParams(save){
   const p=calcPid(0,0);
   delete p.yp; delete p.yi;   // 偏航由飞控自己定：空中测一次方向，测准后自己打开并保存
-  ['angP','rp','ri','rd','pp','pi','pd','yp','yi','idle','mthr','iThr','ya','yff'].forEach(k=>{ if(p[k]!=null) send('E,'+k+','+p[k]); });
+  ['angP','rp','ri','rd','pp','pi','pd','yp','yi','idle','mthr','iThr','ya','yff','crate','lp2','dfc','cap'].forEach(k=>{ if(p[k]!=null) send('E,'+k+','+p[k]); });
   saveIfSafe();
-  pvWant={}; ['angP','rp','ri','rd','pp','pi','pd','mthr','yff'].forEach(k=>{ if(typeof p[k]==='number') pvWant[k]=p[k]; }); pvTry=0;
+  pvWant={}; ['angP','rp','ri','rd','pp','pi','pd','mthr','yff','crate','lp2','dfc','cap'].forEach(k=>{ if(typeof p[k]==='number') pvWant[k]=p[k]; }); pvTry=0;
   setTimeout(()=>send('C'),900);
   if(!canSave) $('#saved').textContent='只改内存（原参数在飞机里没动）';
   $('#pidTxt').textContent='P '+p.rp+' · I '+p.ri+' · D '+p.rd+' · 角度 '+p.angP;
@@ -1003,20 +1004,28 @@ const PDEF=[
   {k:'ri',ks:['ri','pi'],n:'角速度 I',st:0.05,lo:0,hi:2,d:2,h:'总往一边慢慢歪 → 加；慢慢来回大摆 → 减'},
   {k:'angP',ks:['angP'],n:'角度 P',st:0.25,lo:1,hi:10,d:2,h:'回正慢、松杆后不回平 → 加；回正冲过头 → 减'},
   {k:'yff',ks:['yff'],n:'偏航补偿',st:5,lo:-200,hi:200,d:0,h:'一起飞就往一个方向转：转得更快了就往反方向调'},
+  // v18 对齐 Crazyflie 的几项，点 ± 在几个选项之间切换，方便一项项对比
+  {k:'crate',ks:['crate'],n:'控制频率',opts:[250,500,1000],lab:['250 Hz（旧）','500 Hz（CF）','1000 Hz'],h:'传感器始终 1 kHz；这是姿态/角速度环的频率'},
+  {k:'lp2',ks:['lp2'],n:'陀螺滤波',opts:[0,1],lab:['一阶 60 Hz（旧）','二阶 80/30 Hz（CF）'],h:'陀螺二阶 80 Hz、加计二阶 30 Hz'},
+  {k:'dfc',ks:['dfc'],n:'D 项低通',opts:[0,30,60,100],lab:['不滤（CF）','30 Hz（旧）','60 Hz','100 Hz'],h:'电机发烫或嗡嗡抖再打开'},
+  {k:'cap',ks:['cap'],n:'顶满处理',opts:[0,1],lab:['按比例缩（旧）','整体平移（CF）'],h:'某路顶到上限时四路一起减，保住扶正的差值'},
 ];
-const REC={rp:0.5,rd:0.02,ri:0.5,angP:4,yff:-60};   // Claude 推荐（11-16，49 g 带保护圈）
+const REC={rp:0.5,rd:0.02,ri:0.5,angP:4,yff:-60,crate:500,lp2:1,dfc:0,cap:1};   // Claude 推荐（11-16，49 g 带保护圈）
 $('#ptab').innerHTML=PDEF.map(p=>'<div class="prow" data-k="'+p.k+'"><b>'+p.n+'</b><button data-d="-1">−</button><span class="pv">--</span><button data-d="1">+</button><span class="ph">'+p.h+'</span></div>').join('');
-function ptabShow(){ PDEF.forEach(p=>{ const v=BASE[p.k]; $('.prow[data-k="'+p.k+'"] .pv').textContent=(typeof v==='number')?v.toFixed(p.d):'--'; });
+function ptabShow(){ PDEF.forEach(p=>{ const v=BASE[p.k], e=$('.prow[data-k="'+p.k+'"] .pv');
+    if(p.opts){ const i=p.opts.indexOf(v); e.textContent=i>=0?p.lab[i]:'--'; } else e.textContent=(typeof v==='number')?v.toFixed(p.d):'--'; });
   const q=calcPid(0,0); $('#pidTxt').textContent='飞机里：P '+q.rp+' · I '+q.ri+' · D '+q.rd+' · 角度 '+q.angP+' · 偏航补偿 '+BASE.yff; }
 function setParam(p,v){
   if(st.armed){toast('先上锁再改',1);return;}
-  v=Math.max(p.lo,Math.min(p.hi,Math.round(v/p.st)*p.st)); v=+v.toFixed(p.d+1);
+  if(!p.opts){ v=Math.max(p.lo,Math.min(p.hi,Math.round(v/p.st)*p.st)); v=+v.toFixed(p.d+1); }
   p.ks.forEach(k=>{ BASE[k]=v; fetch('/api/tune?set='+k+'&v='+v).catch(()=>{}); });
   ptabShow(); $('#saved').textContent='…';
   clearTimeout(pushT); pushT=setTimeout(()=>{ if(S.on){ pushParams(); $('#saved').textContent='✓ 已写入飞机'; } else $('#saved').textContent='连上后自动写入'; },300);
 }
 $$('.prow').forEach(r=>{ const p=PDEF.find(x=>x.k===r.dataset.k);
-  r.querySelectorAll('button').forEach(b=>b.addEventListener('click',()=>setParam(p,(+BASE[p.k]||0)+p.st*(+b.dataset.d)))); });
+  r.querySelectorAll('button').forEach(b=>b.addEventListener('click',()=>{
+    if(p.opts){ let i=p.opts.indexOf(BASE[p.k]); if(i<0)i=0; i=Math.max(0,Math.min(p.opts.length-1,i+(+b.dataset.d))); setParam(p,p.opts[i]); }
+    else setParam(p,(+BASE[p.k]||0)+p.st*(+b.dataset.d)); })); });
 $('#btnDef').addEventListener('click',()=>{ PDEF.forEach(p=>setParam(p,REC[p.k])); toast('已改成推荐值'); });
 setTimeout(ptabShow,800); setInterval(ptabShow,3000);
 

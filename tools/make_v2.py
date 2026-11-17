@@ -1019,5 +1019,182 @@ rep('''    controlStep(dt);
       if (++n >= 250) { g_tStep = acc / n; g_tStepMax = mx; g_tJit = jm; acc = n = mx = jm = 0; } }
 
     hzAcc++;''')
+# ================= v18（11-17）：照 Crazyflie / ESP-Drone 对齐，每项可开关 =================
+# 板子 IMU_INT 接的是 QMI8658A 的 INT1；数据手册 Rev D：DRDY 只能出在 INT2（没接）→ 用高精度定时器 1 kHz。
+# IMU 改 1793.6 Hz 输出 + 片内低通（13.37% ODR ≈ 240 Hz，抗混叠），每次读到的数据最多旧 0.56 ms。
+# 参数（NVS + /api/param + E,k,v）：crate 控制频率 250/500/1000（默认 500，传感器始终 1 kHz）
+#   lp2 1=二阶 lpf2p 陀螺 80 Hz/加计 30 Hz（Crazyflie 同款），0=旧一阶 60 Hz
+#   dfc D 项低通 Hz，0=不滤（Crazyflie 默认不滤）；cap 1=顶满整体平移（Crazyflie），0=旧的按比例缩
+rep('#define FW_VER "flight-v17"', '#define FW_VER "flight-v18"')
+rep('static const uint32_t CTRL_HZ = 250;', 'static const uint32_t CTRL_HZ = 1000;')
+rep('static float g_yff = -60.0f;', '''static int   g_crate = 500, g_lp2 = 1, g_cap = 1;   // v18 控制频率 / 二阶滤波 / 顶满整体平移
+static float g_dfc = 0.0f;                          // v18 D 项低通 Hz（0 = 不滤）
+static float g_yff = -60.0f;''')
+rep('  prefs.putFloat("hov", g_hov); prefs.putFloat("yff", g_yff);',
+    '  prefs.putFloat("hov", g_hov); prefs.putFloat("yff", g_yff);\n  prefs.putInt("crate", g_crate); prefs.putInt("lp2", g_lp2); prefs.putInt("cap", g_cap); prefs.putFloat("dfc", g_dfc);')
+rep('    g_hov = prefs.getFloat("hov", g_hov); g_yff = prefs.getFloat("yff", g_yff);',
+    '''    g_hov = prefs.getFloat("hov", g_hov); g_yff = prefs.getFloat("yff", g_yff);
+    g_crate = prefs.getInt("crate", g_crate); g_lp2 = prefs.getInt("lp2", g_lp2); g_cap = prefs.getInt("cap", g_cap); g_dfc = prefs.getFloat("dfc", g_dfc);
+    if (g_crate != 250 && g_crate != 1000) g_crate = 500;''')
+_v18set = '''
+  else if (k == "crate") g_crate = (v >= 900 ? 1000 : (v <= 300 ? 250 : 500));
+  else if (k == "lp2") g_lp2 = v > 0.5f ? 1 : 0;
+  else if (k == "cap") g_cap = v > 0.5f ? 1 : 0;
+  else if (k == "dfc") g_dfc = (v < 0 ? 0 : (v > 200 ? 200 : v));'''
+rep('  else if (k == "hov") g_hov = v;', '  else if (k == "hov") g_hov = v;' + _v18set)
+rep('      else if (!strcmp(k, "hov")) g_hov = v;', '''      else if (!strcmp(k, "hov")) g_hov = v;
+      else if (!strcmp(k, "crate")) g_crate = (v >= 900 ? 1000 : (v <= 300 ? 250 : 500));
+      else if (!strcmp(k, "lp2")) g_lp2 = v > 0.5f ? 1 : 0;
+      else if (!strcmp(k, "cap")) g_cap = v > 0.5f ? 1 : 0;
+      else if (!strcmp(k, "dfc")) g_dfc = (v < 0 ? 0 : (v > 200 ? 200 : v));''')
+rep('''"{\\"angP\\":%.2f,\\"rp\\":%.2f,\\"ri\\":%.3f,\\"rd\\":%.2f,"
+           "\\"pp\\":%.2f,\\"pi\\":%.3f,\\"pd\\":%.2f,\\"yp\\":%.2f,"''', '''"{\\"angP\\":%.2f,\\"rp\\":%.3f,\\"ri\\":%.3f,\\"rd\\":%.4f,"
+           "\\"pp\\":%.3f,\\"pi\\":%.3f,\\"pd\\":%.4f,\\"yp\\":%.2f,"''')
+rep('\\"hov\\":%.1f,\\"yff\\":%.1f}",', '\\"hov\\":%.1f,\\"yff\\":%.1f,\\"crate\\":%d,\\"lp2\\":%d,\\"cap\\":%d,\\"dfc\\":%.1f}",')
+rep('(double)g_hov, (double)g_yff);', '(double)g_hov, (double)g_yff, g_crate, g_lp2, g_cap, (double)g_dfc);')
+# ① IMU：±8 g / ±2048 dps，输出 1793.6 Hz（6 轴），片内低通 13.37% ODR
+rep('''      imuW(0x03, 0x24);    // ±8 g
+      imuW(0x04, 0x54);    // ±512 dps''', '''      imuW(0x03, 0x22);    // v18 ±8 g，ODR 代码 2 = 1793.6 Hz（6 轴）
+      imuW(0x04, 0x72);    // v18 ±2048 dps（以前 ±512 翻滚时会顶满），1793.6 Hz
+      imuW(0x06, 0x77);    // v18 CTRL5 片内低通：陀螺/加计都开，模式 3 = 13.37% ODR ≈ 240 Hz（抗混叠）''')
+rep('''  g[0] = (float)(int16_t)(b[7]  << 8 | b[6])  / 64.0f;
+  g[1] = (float)(int16_t)(b[9]  << 8 | b[8])  / 64.0f;
+  g[2] = (float)(int16_t)(b[11] << 8 | b[10]) / 64.0f;''', '''  g[0] = (float)(int16_t)(b[7]  << 8 | b[6])  / 16.0f;   // ±2048 dps → 16 LSB/dps
+  g[1] = (float)(int16_t)(b[9]  << 8 | b[8])  / 16.0f;
+  g[2] = (float)(int16_t)(b[11] << 8 | b[10]) / 16.0f;''')
+# ② 传感器 1 kHz（sensorTick），控制按 crate 跑（controlStep）
+rep('''static void controlStep(float dt) {
+  float a[3], gr[3];
+  const int64_t ti0 = esp_timer_get_time();
+  const bool ok = imuRead(a, gr);
+  { static uint32_t acc = 0, n = 0, mx = 0; const uint32_t d = (uint32_t)(esp_timer_get_time() - ti0);
+    acc += d; if (d > mx) mx = d; if (++n >= 250) { g_tImu = acc / n; g_tImuMax = mx; acc = n = mx = 0; } }
+  if (!ok) { i2cFail++; g_fault |= F_IMU; }
+  else {
+    // 低通（振动抑制，60 Hz 足够，再低会吃掉相位裕度）
+    for (int i = 0; i < 3; i++) { fa[i] = lpfStep(fa[i], a[i], dt, 60.0f); fg[i] = lpfStep(fg[i], gr[i], dt, 60.0f); }
+    g_ax = fa[0]; g_ay = fa[1]; g_az = fa[2];''', '''// v18 二阶巴特沃斯低通（Crazyflie lpf2p.c 同一公式）
+struct Lpf2p {
+  float b0 = 1, b1 = 0, b2 = 0, a1 = 0, a2 = 0, d1 = 0, d2 = 0;
+  void init(float fs, float fc) {
+    const float fr = fs / fc, ohm = tanf(PI_F / fr), c = 1.0f + 2.0f * cosf(PI_F / 4.0f) * ohm + ohm * ohm;
+    b0 = ohm * ohm / c; b1 = 2.0f * b0; b2 = b0;
+    a1 = 2.0f * (ohm * ohm - 1.0f) / c; a2 = (1.0f - 2.0f * cosf(PI_F / 4.0f) * ohm + ohm * ohm) / c;
+    d1 = d2 = 0;
+  }
+  void seed(float x) { const float d = x / (b0 + b1 + b2); d1 = d2 = d; }
+  float apply(float x) {
+    float d0 = x - d1 * a1 - d2 * a2;
+    if (!isfinite(d0)) d0 = x;
+    const float y = d0 * b0 + d1 * b1 + d2 * b2;
+    d2 = d1; d1 = d0; return y;
+  }
+};
+static Lpf2p lfG[3], lfA[3];
+static bool g_imuOk = false, g_lfInit = false;
+static void sensorTick(float dt) {
+  float a[3], gr[3];
+  const int64_t ti0 = esp_timer_get_time();
+  const bool ok = imuRead(a, gr);
+  { static uint32_t acc = 0, n = 0, mx = 0; const uint32_t d = (uint32_t)(esp_timer_get_time() - ti0);
+    acc += d; if (d > mx) mx = d; if (++n >= 1000) { g_tImu = acc / n; g_tImuMax = mx; acc = n = mx = 0; } }
+  g_imuOk = ok;
+  if (!ok) { i2cFail++; g_fault |= F_IMU; return; }
+  if (!g_lfInit) {
+    for (int i = 0; i < 3; i++) { lfG[i].init(1000.0f, 80.0f); lfA[i].init(1000.0f, 30.0f); lfG[i].seed(gr[i]); lfA[i].seed(a[i]); fa[i] = a[i]; fg[i] = gr[i]; }
+    g_lfInit = true;
+  }
+  if (g_lp2) {   // Crazyflie：陀螺 80 Hz、加计 30 Hz 二阶
+    for (int i = 0; i < 3; i++) { fg[i] = lfG[i].apply(gr[i]); fa[i] = lfA[i].apply(a[i]); }
+  } else {       // 旧：一阶 60 Hz（同时让二阶滤波跟着走，切换时不跳）
+    for (int i = 0; i < 3; i++) { fa[i] = lpfStep(fa[i], a[i], dt, 60.0f); fg[i] = lpfStep(fg[i], gr[i], dt, 60.0f); lfG[i].apply(gr[i]); lfA[i].apply(a[i]); }
+  }
+}
+static void controlStep(float dt) {
+  const bool ok = g_imuOk;
+  if (!ok) { }
+  else {
+    g_ax = fa[0]; g_ay = fa[1]; g_az = fa[2];''')
+# ③ D 项：dfc<=0 不滤（Crazyflie 默认）
+rep('''    const float rc = 1.0f / (2.0f * PI_F * dfc);
+    const float a = dt / (rc + dt);
+    df += (dm - df) * a;''', '''    if (dfc <= 0.0f) df = dm;            // v18：0 = D 项不滤
+    else {
+      const float rc = 1.0f / (2.0f * PI_F * dfc);
+      const float a = dt / (rc + dt);
+      df += (dm - df) * a;
+    }''')
+rep('  const float oR = pidR.step(spR, g_gr, dt, IMAX, DFC);', '  const float oR = pidR.step(spR, g_gr, dt, IMAX, g_dfc);')
+rep('  const float oP = pidP.step(spP, g_gp, dt, IMAX, DFC);', '  const float oP = pidP.step(spP, g_gp, dt, IMAX, g_dfc);')
+rep('  float oY = (P.yp > 0.001f) ? pidY.step(spY, g_gy, dt, IMAX, DFC) : 0.0f;', '  float oY = (P.yp > 0.001f) ? pidY.step(spY, g_gy, dt, IMAX, g_dfc) : 0.0f;')
+# ④ 顶满：cap=1 时先整体往下平移（保住电机之间的差值），平移不够才按比例缩
+rep('''  const float roomUp   = (float)(P.mthr - thr);
+  const float roomDown = (float)thr;
+
+  // 饱和缩放''', '''  if (g_cap) {   // v18 Crazyflie 式：最高那路超出上限多少，四路一起减多少
+    float hi = -1e9f;
+    for (int i = 0; i < 4; i++) if (c[i] > hi) hi = c[i];
+    if ((float)thr + hi > (float)P.mthr) { thr = (int)((float)P.mthr - hi); if (thr < 0) thr = 0; }
+  }
+  const float roomUp   = (float)(P.mthr - thr);
+  const float roomDown = (float)thr;
+
+  // 饱和缩放''')
+rep('''      if (fabsf(amag - 1.0f) > 0.15f) R = 30.0f;''', '''      if (fabsf(amag - 1.0f) > 0.15f) R = 30.0f;
+      R *= 0.004f / dt;   // v18：R 原来按 250 Hz 调的，频率变了按步长折算，融合快慢不变''')
+# ⑤ 黑匣子仍按 250 Hz 记（4.8 秒）
+rep('''  if (bb && !bbFrozen) {
+    BBRec& r = bb[bbHead];''', '''  static int bbDec = 0;
+  if (bb && !bbFrozen && ++bbDec >= g_crate / 250) {
+    bbDec = 0;
+    BBRec& r = bb[bbHead];''')
+# ⑥ 控制任务：esp_timer 1 kHz 唤醒（不用 1 ms 系统节拍的 vTaskDelayUntil），传感器每拍、控制每 1000/crate 拍
+rep('''static void ctrlTask(void*) {
+  int64_t prev = esp_timer_get_time();
+  TickType_t last = xTaskGetTickCount();
+  const TickType_t period = pdMS_TO_TICKS(1000 / CTRL_HZ);
+  uint32_t hzAcc = 0;
+  int64_t hzT0 = prev;
+
+  for (;;) {
+    const int64_t now = esp_timer_get_time();
+    float dt = (float)(now - prev) * 1e-6f;
+    prev = now;
+    if (dt < 0.0008f) dt = 0.0008f;
+    if (dt > 0.0200f) dt = 0.0200f;
+
+    controlStep(dt);''', '''static TaskHandle_t g_ctrlH = nullptr;
+static void ctrlTickCb(void*) { if (g_ctrlH) xTaskNotifyGive(g_ctrlH); }
+static void ctrlTask(void*) {
+  g_ctrlH = xTaskGetCurrentTaskHandle();
+  esp_timer_handle_t th = nullptr;
+  esp_timer_create_args_t ta = {};
+  ta.callback = ctrlTickCb; ta.name = "ctl";
+  esp_timer_create(&ta, &th);
+  esp_timer_start_periodic(th, 1000000 / CTRL_HZ);
+  int64_t prev = esp_timer_get_time(), ctlPrev = prev;
+  uint32_t hzAcc = 0, tick = 0;
+  int64_t hzT0 = prev;
+
+  for (;;) {
+    ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(5));
+    const int64_t now = esp_timer_get_time();
+    float dt = (float)(now - prev) * 1e-6f;
+    prev = now;
+    if (dt < 0.0002f) dt = 0.0002f;
+    if (dt > 0.0200f) dt = 0.0200f;
+
+    sensorTick(dt);
+    const uint32_t div = 1000u / (uint32_t)g_crate;
+    if (++tick >= div) {
+      tick = 0;
+      float cdt = (float)(now - ctlPrev) * 1e-6f; ctlPrev = now;
+      if (cdt < 0.0005f) cdt = 0.0005f; if (cdt > 0.0200f) cdt = 0.0200f;
+      controlStep(cdt);
+    }''')
+rep('''    vTaskDelayUntil(&last, period);
+  }
+}''', '''  }
+}''')
 open(dst, 'w', encoding='utf-8').write(t)
 print('ok')

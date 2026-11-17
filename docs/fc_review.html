@@ -178,11 +178,11 @@ tr:last-child td{border-bottom:0}
 <section>
   <div class="sec-h"><h2>改进路线</h2><span class="tag">按收益/成本排序</span></div>
   <div class="road">
-    <div class="step"><span class="no">1</span><div><h3>IMU 改 1 kHz + 开片内低通 + 控制 500 Hz</h3><p>改 CTRL2/CTRL3 输出率、CTRL5 低通；控制任务改用高精度定时（不用 1 ms 系统节拍）。先看板子上 IMU 的 INT 脚有没有连到 ESP32，连了就用中断同步。</p></div><div class="meta"><span class="pill acc">纯软件</span><span class="pill ok">收益最大</span></div></div>
-    <div class="step"><span class="no">2</span><div><h3>陀螺二阶 80 Hz、加计二阶 30 Hz（照 Crazyflie）</h3><p>替换现在的一阶 60 Hz；D 项保持单独低通。I²C 读一次 0.55 ms，500 Hz 时占 28%，1 kHz 时占 55%，都在余量内。</p></div><div class="meta"><span class="pill acc">纯软件</span></div></div>
+    <div class="step"><span class="no">1</span><div><h3>IMU 1793.6 Hz + 片内低通 + 传感器 1 kHz + 控制 500 Hz</h3><p>v18 已做。板子的 IMU_INT 接在 QMI8658A 的 INT1，数据手册 Rev D 写明数据就绪只出在 INT2（没接），INT1 只能出 FIFO 中断且每次读要 CTRL9 握手，所以改用 esp_timer 1 kHz 定时；IMU 输出 1793.6 Hz，读到的数据最多旧 0.56 ms。实测读一次 0.50 ms，每拍平均 0.60 ms。</p></div><div class="meta"><span class="pill ok">v18 已做</span><span class="pill acc">可开关</span></div></div>
+    <div class="step"><span class="no">2</span><div><h3>陀螺二阶 80 Hz、加计二阶 30 Hz、D 项不滤（照 Crazyflie）</h3><p>v18 已做，公式和 Crazyflie lpf2p.c 一样。调试台参数页可切回旧的一阶 60 Hz、D 项可选 30/60/100 Hz，一项项对比。</p></div><div class="meta"><span class="pill ok">v18 已做</span><span class="pill acc">可开关</span></div></div>
     <div class="step"><span class="no">3</span><div><h3>量推力曲线，做推力线性化</h3><p>测试架上加厨房秤，记录不同占空比、不同电压下的推力，拟合曲线写进固件，替换现在的 3950/V 线性补偿。</p></div><div class="meta"><span class="pill warn">要测试架</span><span class="pill ok">电量影响消失</span></div></div>
     <div class="step"><span class="no">4</span><div><h3>在测试架上重新调角速度环</h3><p>阶跃响应：P 从 0.5 往上加到出现小抖再退 30%，D 压过冲，最后角度 P 和前馈调手感。</p></div><div class="meta"><span class="pill warn">要测试架</span></div></div>
-    <div class="step"><span class="no">5</span><div><h3>顶满处理改成 Crazyflie 式“整体平移”</h3><p>超出上限时四路一起减，保住电机之间的差值（姿态纠正量），偏航仍最后让。</p></div><div class="meta"><span class="pill acc">纯软件</span></div></div>
+    <div class="step"><span class="no">5</span><div><h3>顶满处理改成 Crazyflie 式“整体平移”</h3><p>v18 已做：超出上限时四路一起减，保住电机之间的差值（姿态纠正量），偏航仍最后让。可切回旧的按比例缩。</p></div><div class="meta"><span class="pill ok">v18 已做</span><span class="pill acc">可开关</span></div></div>
     <div class="step"><span class="no">6</span><div><h3>黑匣子加原始陀螺高速记录 + 回放页频谱图</h3><p>测试架上带桨转一段，看真实振动峰；有峰再决定缓冲垫/陷波。</p></div><div class="meta"><span class="pill acc">纯软件</span></div></div>
     <div class="step"><span class="no">7</span><div><h3>IMU 软装 / 桨平衡</h3><p>第 6 步看到明显振动峰再做。</p></div><div class="meta"><span class="pill bad">动硬件</span><span class="pill warn">视数据而定</span></div></div>
   </div>
