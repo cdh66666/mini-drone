@@ -11,7 +11,11 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font:16px/1.
 button{font:inherit;color:inherit;cursor:pointer;border:0;border-radius:12px;background:#24303c;padding:10px 16px}
 button:disabled{opacity:.35;cursor:not-allowed}
 button:focus{outline:none}
-.app{display:grid;grid-template-rows:64px 1fr;height:100vh}
+.app{display:grid;grid-template-rows:64px 1fr;grid-template-columns:minmax(0,1fr);height:100vh}
+header{min-width:0;overflow:hidden}
+header .chip{flex-shrink:1;min-width:0;overflow:hidden}
+#estop{flex:none}   /* 急停永远完整显示，挤的是左边的状态块 */
+@media (max-width:520px){#chg,#mode{display:none!important}}
 header{display:flex;align-items:center;gap:12px;padding:0 16px;border-bottom:1px solid var(--line)}
 header .logo{font-size:26px}
 .chip{display:flex;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;background:var(--card);font-size:15px;white-space:nowrap}
@@ -20,13 +24,13 @@ header .logo{font-size:26px}
 .grow{flex:1}
 #estop{background:var(--bad);color:#fff;font-size:22px;font-weight:700;padding:10px 26px;border-radius:14px;box-shadow:0 0 0 3px #ff4d4f55}
 #estop small{font-size:12px;font-weight:400;opacity:.85;margin-left:6px}
-main{display:grid;grid-template-columns:96px 1fr;min-height:0}
+main{display:grid;grid-template-columns:96px minmax(0,1fr);min-height:0}
 nav{display:flex;flex-direction:column;gap:8px;padding:12px 8px;border-right:1px solid var(--line)}
 nav button{display:flex;flex-direction:column;align-items:center;gap:2px;padding:10px 4px;background:transparent;font-size:13px;color:var(--dim);position:relative}
 nav button .i{font-size:26px}
 nav button.cur{background:var(--card);color:var(--fg)}
 nav button.done::after{content:"✓";position:absolute;top:4px;right:8px;color:var(--ok);font-size:14px}
-.stage{padding:20px 28px;min-height:0;overflow:auto;display:flex;flex-direction:column}
+.stage{padding:20px 28px;min-height:0;min-width:0;overflow:auto;display:flex;flex-direction:column}
 .step{display:none;flex:1;flex-direction:column;gap:18px}
 .step.cur{display:flex}
 h2{margin:0;font-size:24px}
@@ -201,7 +205,7 @@ h2{margin:0;font-size:24px}
   .tog{font-size:14px;gap:6px;padding:6px}
 }
 @media (max-width:640px){
-  main{grid-template-columns:64px 1fr}
+  main{grid-template-columns:64px minmax(0,1fr)}
   nav{padding:8px 4px}
   nav button{font-size:12px;padding:8px 2px}
   nav button .i{font-size:22px}
