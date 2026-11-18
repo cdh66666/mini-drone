@@ -13,7 +13,7 @@ plt.rcParams["font.sans-serif"] = ["Microsoft YaHei"]
 plt.rcParams["axes.unicode_minus"] = False
 ASM = Path(__file__).resolve().parent / "stl" / "assembly"
 PIVOT_H = 100.0
-CG_ABOVE = 18.0   # 估算：电机座 16 g、电机 10 g、电池 8 g、PCB 8 g… 见 README
+CG_ABOVE = 19.0   # 估算：电机座 16 g、电机 10 g、电池 8 g、PCB 8 g… 见 README
 
 COL = {"base": "#2f6db5", "post": "#2f6db5", "adapter": "#f07a1a",
        "pcb": "#0c4a22", "battery": "#b9bcc4", "mount": "#9a9a96", "prop": "#333"}
@@ -49,7 +49,7 @@ ax.add_patch(Arc((0, PIVOT_H), 90, 90, theta1=90 - LIM, theta2=90 + LIM, color="
 ax.text(0, PIVOT_H + 50, f"±{LIM:.0f}° 限位（2 号紧度）\n(卡口下沿碰球颈)", ha="center", fontsize=10, color="red")
 ax.annotate("卡扣式球窝\n（6 条弹性指，按进去“咔”）", (7, PIVOT_H - 2), (40, 60), fontsize=10,
             arrowprops=dict(arrowstyle="->"), color="#c25a00")
-ax.annotate("托板 + 绑带孔\n（皮筋/扎带穿过 PCB 两条槽）", (12, PIVOT_H + 9), (55, 165), fontsize=10,
+ax.annotate("卡钩转接件\n（两只卡钩插进 PCB 两条长槽）", (12, PIVOT_H + 9), (55, 165), fontsize=10,
             arrowprops=dict(arrowstyle="->"), color="#c25a00")
 ax.annotate("压重物的坑 ×4\n（胶带直接贴圆盘边）", (52, 4), (85, 30), fontsize=10,
             arrowprops=dict(arrowstyle="->"), color="#2f6db5")

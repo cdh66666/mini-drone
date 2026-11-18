@@ -105,14 +105,22 @@ tilt_drone(objs, Vector((0.6, 0.8, 0)).normalized(), 15)
 camera((300, -330, 230), (0, 0, 75), lens=55)
 render(OUTD / "stand_hero.png")
 
-# 2) 球铰近景（俯仰 15°，桨和电机座隐藏）
+# 2) 卡钩近景：从斜上方看两只卡钩穿过 PCB 长槽（桨和电机座隐藏）
+setup()
+objs = load()
+for o, k in objs.values():
+    if k in ("prop", "mount", "battery"):
+        o.hide_render = True
+camera((70, -95, 175), (0, 0, 112), lens=60)
+render(OUTD / "stand_clip_top.png")
+
+# 2b) 从下面看：横梁、球窝、垫台
 setup()
 objs = load()
 for o, k in objs.values():
     if k in ("prop", "mount"):
         o.hide_render = True
-tilt_drone(objs, Vector((0, 1, 0)), 15)
-camera((95, -150, 150), (8, 0, 92), lens=70)
+camera((80, -110, 60), (0, 0, 108), lens=60)
 render(OUTD / "stand_joint.png")
 
 # 3) 爆炸图
