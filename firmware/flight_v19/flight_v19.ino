@@ -2421,7 +2421,11 @@ button{font:inherit;color:inherit}
 @media (max-width:440px){.top{gap:7px;font-size:12px;padding:7px 10px}#conn{display:none}.tele{gap:8px}.mots{width:96px}}
 .card{background:var(--card);border:1px solid var(--line);border-radius:16px;min-height:0;min-width:0}
 /* 油门 */
-.thr{display:flex;flex-direction:column;align-items:center;padding:10px 8px;gap:6px}
+.thr{display:flex;flex-direction:column;align-items:center;padding:10px 8px;gap:6px;touch-action:none;position:relative}
+.thr.on{border-color:var(--ok)}
+.thr .cap{text-align:center}
+.yawi{width:80%;height:6px;border-radius:3px;background:#0d1622;position:relative}
+.yawi i{position:absolute;top:-3px;left:50%;width:12px;height:12px;margin-left:-6px;border-radius:50%;background:#4a6a90}
 .cap{font-size:12px;color:var(--dim)}
 .track{flex:1;width:70px;border-radius:14px;background:#0d1622;border:1px solid var(--line);position:relative;overflow:hidden;min-height:90px;touch-action:none}
 .fill{position:absolute;left:0;right:0;bottom:0;height:0;background:linear-gradient(#2fd3c0,#17675f)}
@@ -2489,7 +2493,8 @@ button{font:inherit;color:inherit}
   </div>
   <div class="main">
     <div class="card thr">
-      <div class="cap">油门</div>
+      <div class="cap">左手：上下拖 = 油门 · 左右 = 转向</div>
+      <div class="yawi" id="yawi"><i></i></div>
       <div class="track" id="track"><div class="fill" id="fill"></div><div class="tkm" id="tkm"><b>起飞</b></div><div class="tgt" id="tgt"></div></div>
       <div class="big" id="tpct">0%</div>
       <div class="row"><button class="sb" id="tm">−</button><button class="sb" id="tp">+</button></div>
@@ -2668,11 +2673,22 @@ document.addEventListener('visibilitychange',function(){if(document.hidden&&S.ar
 window.addEventListener('pagehide',function(){if(S.armed)estop();});
 
 /* ---------- 油门条 ---------- */
-(function(){var tr=$('#track'),act=null;
-  function setY(y){var r=tr.getBoundingClientRect();var v=Math.round(Math.max(0,Math.min(100,(r.bottom-y)/r.height*100)));C.target=v;C.landing=false;}
-  tr.addEventListener('pointerdown',function(e){e.preventDefault();if(!S.armed){toast('先按“起飞”');return;}act=e.pointerId;try{tr.setPointerCapture(act);}catch(x){}setY(e.clientY);});
-  tr.addEventListener('pointermove',function(e){if(e.pointerId===act&&S.armed)setY(e.clientY);});
-  ['pointerup','pointercancel','lostpointercapture'].forEach(function(ev){tr.addEventListener(ev,function(e){if(e.pointerId===act)act=null;});});
+/* 左手：整块油门卡片都能拖。上下 = 相对调油门（按下不跳，拖满卡片高度 = 60%），左右 = 转机头（松手回中）。
+   和右手摇杆是两个独立的触点，可以同时按 */
+(function(){var el=$('.thr'),act=null,y0=0,x0=0,t0=0,yi=$('#yawi i');
+  function end(e){if(e.pointerId!==act)return;act=null;el.classList.remove('on');C.y=0;yi.style.transform='';}
+  el.addEventListener('pointerdown',function(e){
+    if(e.target.closest&&e.target.closest('button'))return;   // −/+ 按钮照常
+    e.preventDefault();if(act!==null)return;
+    if(!S.armed||!C.mine){toast('先按“起飞”');return;}
+    act=e.pointerId;try{el.setPointerCapture(act);}catch(x){}el.classList.add('on');y0=e.clientY;x0=e.clientX;t0=C.target;});
+  el.addEventListener('pointermove',function(e){
+    if(e.pointerId!==act||!S.armed)return;
+    var h=el.getBoundingClientRect().height||300;
+    C.target=Math.max(0,Math.min(100,Math.round(t0+(y0-e.clientY)/h*60)));C.landing=false;
+    var dx=e.clientX-x0,k=Math.abs(dx)<10?0:Math.max(-1,Math.min(1,(dx-(dx>0?10:-10))/70));
+    C.y=k*0.5;yi.style.transform='translateX('+(k*40).toFixed(0)+'px)';});
+  ['pointerup','pointercancel','lostpointercapture'].forEach(function(ev){el.addEventListener(ev,end);});
 })();
 function nudge(d){if(!S.armed){toast('先按“起飞”');return;}C.landing=false;C.target=Math.max(0,Math.min(100,Math.round(C.target)+d));}
 $('#tm').onclick=function(){nudge(-1);};$('#tp').onclick=function(){nudge(1);};
@@ -2781,7 +2797,7 @@ document.addEventListener('contextmenu',function(e){e.preventDefault();});
 /* 长按不选字、不弹复制菜单：按住类的控件直接吃掉 touchstart（它们只用 pointer 事件），全局禁止选区 */
 document.addEventListener('selectstart',function(e){if(!(e.target.closest&&e.target.closest('input,textarea')))e.preventDefault();});
 document.addEventListener('selectionchange',function(){var s=window.getSelection&&window.getSelection();if(s&&s.rangeCount&&!(document.activeElement&&/INPUT|TEXTAREA/.test(document.activeElement.tagName)))s.removeAllRanges();});
-['#stop','#go','#track','#pad','#yl','#yr'].forEach(function(s){var el=$(s);if(el)el.addEventListener('touchstart',function(e){if(e.cancelable)e.preventDefault();},{passive:false});});
+['#stop','#go','.thr','#pad','#yl','#yr'].forEach(function(s){var el=$(s);if(el)el.addEventListener('touchstart',function(e){if(s==='.thr'&&e.target.closest&&e.target.closest('button'))return;if(e.cancelable)e.preventDefault();},{passive:false});});
 render();
 </script></body></html>
 )HTML";
