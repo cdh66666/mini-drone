@@ -105,9 +105,9 @@ static float g_mg[4] = {1, 1, 1, 1};                // v19 每个电机推力补
 static float g_yff = -60.0f;  // v17 偏航前馈（‰，混控 oY 单位），离地后加，存 NVS
 static float g_hov = 405.0f;  // 学到的悬停油门（‰，电压补偿前），存 NVS
 static float g_ah = 0.0f;     // 定高开关/力度（0 = 关；v13 实测估计会漂，默认关）
-static float g_kdz = 350.0f;  // 压上下弹：每 1 m/s 竖直速度（高通）反向 g_kdz ‰（0 = 关）
-static float g_tz = 1.5f;     // 竖直速度高通时间常数（s）
-static float g_dzmax = 100.0f; // 压弹最多加减多少 ‰
+static float g_kdz = 300.0f;  // 压上下弹：每 1 m/s 竖直速度（高通）反向 g_kdz ‰（0 = 关）
+static float g_tz = 0.8f;     // 竖直速度高通时间常数（s）
+static float g_dzmax = 80.0f; // 压弹最多加减多少 ‰
 static float g_tramp = 0.3f;  // 起飞油门软启动（s）
 static float g_ht = 0.4f;     // 起飞目标高度（m）
 static float g_climb = 0.3f;  // 爬升速度（m/s）
@@ -2749,7 +2749,7 @@ var PR=[{k:'rp',ks:['rp','pp'],n:'角速度 P',st:0.25,d:2,lo:0.5,hi:6,h:'软、
   {k:'rd',ks:['rd','pd'],n:'角速度 D',st:0.01,d:3,lo:0,hi:0.2,h:'冲过头 → 加；电机烫/高频抖 → 减'},
   {k:'angP',ks:['angP'],n:'角度 P',st:0.5,d:1,lo:1,hi:10,h:'回正慢 → 加；回正冲过头 → 减'},
   {k:'kff',ks:['kff'],n:'杆量前馈',st:0.1,d:1,lo:0,hi:1.5,h:'打杆反应慢 → 加；一打杆就冲 → 减'},
-  {k:'kdz',ks:['kdz'],n:'高度阻尼',st:50,d:0,lo:0,hi:800,h:'高度一上一下 → 加；上下抽动 → 减'}];
+  {k:'kdz',ks:['kdz'],n:'高度阻尼',st:50,d:0,lo:0,hi:500,h:'只压快速上下窜，太大会抢油门，300 左右'}];
 $('#prm').innerHTML=PR.map(function(p){return '<div class="pr" data-k="'+p.k+'"><span>'+p.n+'</span><button class="sb" data-d="-1">−</button><b>--</b><button class="sb" data-d="1">+</button><i>'+p.h+'</i></div>';}).join('');
 function prShow(){PR.forEach(function(p){var v=P&&P[p.k];txt(document.querySelector('.pr[data-k="'+p.k+'"] b'),typeof v==='number'?v.toFixed(p.d):'--');});}
 Array.prototype.forEach.call(document.querySelectorAll('.pr'),function(row){

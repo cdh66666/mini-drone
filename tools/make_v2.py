@@ -1293,9 +1293,9 @@ rep('''    spR += g_angI * aiR; spP += g_angI * aiP;
     spR += ffR; spP += ffP;
   }''')
 # ② 高度：压上下弹的高通从 0.6 s 拉到 1.5 s（能压住 ~3 s 一个来回的慢起伏），力度 200→350、上限 60→100‰
-rep('static float g_kdz = 200.0f;', 'static float g_kdz = 350.0f;')
-rep('static float g_tz = 0.6f;', 'static float g_tz = 1.5f;')
-rep('static float g_dzmax = 60.0f;', 'static float g_dzmax = 100.0f;')
+rep('static float g_kdz = 200.0f;', 'static float g_kdz = 300.0f;')
+rep('static float g_tz = 0.6f;', 'static float g_tz = 0.8f;')
+rep('static float g_dzmax = 60.0f;', 'static float g_dzmax = 80.0f;')
 # 存 NVS + 参数 JSON（调试台参数页能调、能回读）
 rep('  prefs.putInt("crate", g_crate);', '  prefs.putFloat("kff", g_kff); prefs.putFloat("kdz", g_kdz); prefs.putFloat("tz", g_tz); prefs.putFloat("dzmax", g_dzmax);\n  prefs.putInt("crate", g_crate);')
 rep('    g_crate = prefs.getInt("crate", g_crate);', '    g_kff = prefs.getFloat("kff", g_kff); g_kdz = prefs.getFloat("kdz", g_kdz); g_tz = prefs.getFloat("tz", g_tz); g_dzmax = prefs.getFloat("dzmax", g_dzmax);\n    g_crate = prefs.getInt("crate", g_crate);')

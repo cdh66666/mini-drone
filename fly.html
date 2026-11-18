@@ -1091,14 +1091,14 @@ const PDEF=[
   {k:'angP',ks:['angP'],n:'角度 P',st:0.25,lo:1,hi:10,d:2,h:'回正慢、松杆后不回平 → 加；回正冲过头 → 减'},
   {k:'yff',ks:['yff'],n:'偏航补偿',st:5,lo:-200,hi:200,d:0,h:'一起飞就往一个方向转：转得更快了就往反方向调'},
   {k:'kff',ks:['kff'],n:'杆量前馈',st:0.1,lo:0,hi:1.5,d:1,h:'打杆后反应慢、跟不上 → 加；一打杆就冲过头 → 减（v19）'},
-  {k:'kdz',ks:['kdz'],n:'高度阻尼',st:50,lo:0,hi:800,d:0,h:'高度一上一下起伏 → 加；油门发抖、上下抽动 → 减（v19）'},
+  {k:'kdz',ks:['kdz'],n:'高度阻尼',st:50,lo:0,hi:500,d:0,h:'只压快速上下窜；太大会和你抢油门（加速度计有零偏），300 左右'},
   // v18 对齐 Crazyflie 的几项，点 ± 在几个选项之间切换，方便一项项对比
   {k:'crate',ks:['crate'],n:'控制频率',opts:[250,500,1000],lab:['250 Hz（旧）','500 Hz（CF）','1000 Hz'],h:'传感器始终 1 kHz；这是姿态/角速度环的频率'},
   {k:'lp2',ks:['lp2'],n:'陀螺滤波',opts:[0,1],lab:['一阶 60 Hz（旧）','二阶 80/30 Hz（CF）'],h:'陀螺二阶 80 Hz、加计二阶 30 Hz'},
   {k:'dfc',ks:['dfc'],n:'D 项低通',opts:[0,30,60,100],lab:['不滤（CF）','30 Hz（旧）','60 Hz','100 Hz'],h:'电机发烫或嗡嗡抖再打开'},
   {k:'cap',ks:['cap'],n:'顶满处理',opts:[0,1],lab:['按比例缩（旧）','整体平移（CF）'],h:'某路顶到上限时四路一起减，保住扶正的差值'},
 ];
-const REC={rp:3.5,rd:0.08,ri:1.0,angP:6,yff:-60,crate:500,lp2:1,dfc:30,cap:1,kff:0.4,kdz:350};   // 11-18 测试架上调出来的   // Claude 推荐（11-16，49 g 带保护圈）
+const REC={rp:3.5,rd:0.08,ri:1.0,angP:6,yff:-60,crate:500,lp2:1,dfc:30,cap:1,kff:0.4,kdz:300};   // 11-18 测试架上调出来的   // Claude 推荐（11-16，49 g 带保护圈）
 $('#ptab').innerHTML=PDEF.map(p=>'<div class="prow" data-k="'+p.k+'"><b>'+p.n+'</b><button data-d="-1">−</button><span class="pv">--</span><button data-d="1">+</button><span class="ph">'+p.h+'</span></div>').join('');
 function ptabShow(){ PDEF.forEach(p=>{ const v=BASE[p.k], e=$('.prow[data-k="'+p.k+'"] .pv');
     if(p.opts){ const i=p.opts.indexOf(v); e.textContent=i>=0?p.lab[i]:'--'; } else e.textContent=(typeof v==='number')?v.toFixed(p.d):'--'; });
