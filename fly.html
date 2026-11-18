@@ -1049,7 +1049,7 @@ const PDEF=[
   {k:'dfc',ks:['dfc'],n:'D 项低通',opts:[0,30,60,100],lab:['不滤（CF）','30 Hz（旧）','60 Hz','100 Hz'],h:'电机发烫或嗡嗡抖再打开'},
   {k:'cap',ks:['cap'],n:'顶满处理',opts:[0,1],lab:['按比例缩（旧）','整体平移（CF）'],h:'某路顶到上限时四路一起减，保住扶正的差值'},
 ];
-const REC={rp:0.5,rd:0.02,ri:0.5,angP:4,yff:-60,crate:500,lp2:1,dfc:0,cap:1};   // Claude 推荐（11-16，49 g 带保护圈）
+const REC={rp:3.5,rd:0.08,ri:1.0,angP:6,yff:-60,crate:500,lp2:1,dfc:30,cap:1};   // 11-18 测试架上调出来的   // Claude 推荐（11-16，49 g 带保护圈）
 $('#ptab').innerHTML=PDEF.map(p=>'<div class="prow" data-k="'+p.k+'"><b>'+p.n+'</b><button data-d="-1">−</button><span class="pv">--</span><button data-d="1">+</button><span class="ph">'+p.h+'</span></div>').join('');
 function ptabShow(){ PDEF.forEach(p=>{ const v=BASE[p.k], e=$('.prow[data-k="'+p.k+'"] .pv');
     if(p.opts){ const i=p.opts.indexOf(v); e.textContent=i>=0?p.lab[i]:'--'; } else e.textContent=(typeof v==='number')?v.toFixed(p.d):'--'; });
