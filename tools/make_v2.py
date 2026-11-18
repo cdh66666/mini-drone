@@ -1274,5 +1274,34 @@ rep('''  if (!g_armed) { sendJson("{\\"ok\\":0}"); return; }
   if (g_ctlSrc != 0 && g_ctlSrc != 3) { sendJson("{\\"ok\\":0,\\"why\\":\\"busy\\"}"); return; }
   g_ctlSrc = 3;
   int t = server.arg("thr").toInt();''')
+# ================= v19（11-18）：借鉴 Betaflight 的杆量前馈；高度起伏压得更狠 =================
+rep('#define FW_VER "flight-v18"', '#define FW_VER "flight-v19"')
+# ① 杆量前馈：目标角先过一个 80 ms 平滑，平滑后的变化率 × kff 直接加到角速度设定上（不等角度误差慢慢攒）
+rep('static float g_dfc = 0.0f;                          // v18 D 项低通 Hz（0 = 不滤）',
+    'static float g_dfc = 0.0f;                          // v18 D 项低通 Hz（0 = 不滤）\nstatic float g_kff = 0.4f;                          // v19 杆量前馈（°/s 每 °/s 目标变化率）')
+rep('''    spR += g_angI * aiR; spP += g_angI * aiP;
+  }''', '''    spR += g_angI * aiR; spP += g_angI * aiP;
+  }
+  {
+    static float fR = 0, fP = 0;
+    const float tau = 0.08f, a = dt / (tau + dt);
+    float ffR = g_kff * (tRoll - fR) / tau, ffP = g_kff * (tPitch - fP) / tau;
+    fR += (tRoll - fR) * a; fP += (tPitch - fP) * a;
+    if (thr < g_iThr) { ffR = ffP = 0; }
+    if (ffR > 150) ffR = 150; if (ffR < -150) ffR = -150;
+    if (ffP > 150) ffP = 150; if (ffP < -150) ffP = -150;
+    spR += ffR; spP += ffP;
+  }''')
+# ② 高度：压上下弹的高通从 0.6 s 拉到 1.5 s（能压住 ~3 s 一个来回的慢起伏），力度 200→350、上限 60→100‰
+rep('static float g_kdz = 200.0f;', 'static float g_kdz = 350.0f;')
+rep('static float g_tz = 0.6f;', 'static float g_tz = 1.5f;')
+rep('static float g_dzmax = 60.0f;', 'static float g_dzmax = 100.0f;')
+# 存 NVS + 参数 JSON（调试台参数页能调、能回读）
+rep('  prefs.putInt("crate", g_crate);', '  prefs.putFloat("kff", g_kff); prefs.putFloat("kdz", g_kdz); prefs.putFloat("tz", g_tz); prefs.putFloat("dzmax", g_dzmax);\n  prefs.putInt("crate", g_crate);')
+rep('    g_crate = prefs.getInt("crate", g_crate);', '    g_kff = prefs.getFloat("kff", g_kff); g_kdz = prefs.getFloat("kdz", g_kdz); g_tz = prefs.getFloat("tz", g_tz); g_dzmax = prefs.getFloat("dzmax", g_dzmax);\n    g_crate = prefs.getInt("crate", g_crate);')
+rep('  else if (k == "crate") g_crate =', '  else if (k == "kff") g_kff = (v < 0 ? 0 : (v > 2 ? 2 : v));\n  else if (k == "crate") g_crate =')
+rep('      else if (!strcmp(k, "crate")) g_crate =', '      else if (!strcmp(k, "kff")) g_kff = (v < 0 ? 0 : (v > 2 ? 2 : v));\n      else if (!strcmp(k, "kdz")) g_kdz = v;\n      else if (!strcmp(k, "tz")) g_tz = v;\n      else if (!strcmp(k, "dzmax")) g_dzmax = v;\n      else if (!strcmp(k, "crate")) g_crate =')
+rep('\\"cap\\":%d,\\"dfc\\":%.1f}",', '\\"cap\\":%d,\\"dfc\\":%.1f,\\"kff\\":%.2f,\\"kdz\\":%.0f,\\"tz\\":%.2f,\\"dzmax\\":%.0f}",')
+rep('g_crate, g_lp2, g_cap, (double)g_dfc);', 'g_crate, g_lp2, g_cap, (double)g_dfc, (double)g_kff, (double)g_kdz, (double)g_tz, (double)g_dzmax);')
 open(dst, 'w', encoding='utf-8').write(t)
 print('ok')

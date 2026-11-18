@@ -142,6 +142,13 @@ h2{margin:0;font-size:24px}
 .prow .pv{text-align:center;font-weight:700;font-size:17px}
 .prow .ph{color:var(--dim);font-size:12px}
 @media (max-width:640px){.prow{grid-template-columns:72px 32px minmax(0,1fr) 32px}.prow .ph{grid-column:1/-1;margin-top:-4px}}
+.step[data-s="6"]{gap:10px}
+#fcSel{font:inherit;padding:6px 8px;border-radius:8px;border:1px solid var(--line);background:#0f1318;color:var(--fg)}
+.fcm{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}
+.fcm div{background:var(--card);border-radius:10px;padding:8px 10px;font-size:13px;color:var(--dim)}
+.fcm b{display:block;font-size:18px;color:var(--fg)}
+.fcp{display:flex;flex-direction:column;gap:6px;min-height:0}
+.fcp svg{width:100%;background:var(--card);border-radius:10px}
 .tt{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);gap:14px;min-height:0}
 .ttl,.ttr{display:flex;flex-direction:column;gap:10px;min-width:0}
 .ttlv{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
@@ -246,6 +253,7 @@ h2{margin:0;font-size:24px}
   <button data-s="3"><span class="i">🛫</span>飞行</button>
   <button data-s="4"><span class="i">🎚️</span>参数</button>
   <button data-s="5"><span class="i">⚖️</span>推力</button>
+  <button data-s="6"><span class="i">📈</span>曲线</button>
 </nav>
 <div class="stage">
 
@@ -414,6 +422,14 @@ h2{margin:0;font-size:24px}
   <div class="hint" style="font-size:13px" id="pidTxt"></div>
 </section>
 
+<!-- 7 曲线：每次飞完自动显示这次的「目标 vs 实际」，调参就看它 -->
+<section class="step" data-s="6">
+  <div class="row" style="gap:10px"><h2 style="font-size:20px">飞行曲线</h2><select id="fcSel"></select><button class="ghost" id="fcRef">↻</button><span class="hint" id="fcInfo"></span></div>
+  <div class="fcm" id="fcM"></div>
+  <div class="fcp"><svg id="fcR" viewBox="0 0 1000 170"></svg><svg id="fcP" viewBox="0 0 1000 170"></svg><svg id="fcO" viewBox="0 0 1000 120"></svg></div>
+  <div class="hint" style="font-size:12px">灰 = 杆量给的目标角度（杆量 × 25°），彩色 = 实际。实际总比目标小 → 加「杆量前馈」或「角度 P」；冲过头来回晃 → 减；不打杆时也晃 → 角速度 P/D。</div>
+</section>
+
 <!-- 6 推力测试（厨房秤） -->
 <section class="step" data-s="5">
   <div class="warnbar"><span class="i">⚖️</span><span>飞机倒过来（桨朝下）架在柱子上，放好后按秤的“清零”</span></div>
@@ -454,7 +470,7 @@ function calcPid(a,b){
   return {angP:r(BASE.angP*s),rp:r(BASE.rp*s),pp:r(BASE.pp*s),
           rd:r(BASE.rd*s*(2-d)),pd:r(BASE.pd*s*(2-d)),ri:BASE.ri,pi:BASE.pi,
           yp:BASE.yp,idle:BASE.idle,mthr:BASE.mthr,iThr:BASE.iThr,ya:BASE.ya,yff:BASE.yff,
-          crate:BASE.crate,lp2:BASE.lp2,dfc:BASE.dfc,cap:BASE.cap};
+          crate:BASE.crate,lp2:BASE.lp2,dfc:BASE.dfc,cap:BASE.cap,kff:BASE.kff,kdz:BASE.kdz,tz:BASE.tz,dzmax:BASE.dzmax};
 }
 function lsGet(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v);}catch(e){return d;}}
 function lsSet(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}}
@@ -653,9 +669,9 @@ $('#btnOrig').addEventListener('click',()=>{
 function pushParams(save){
   const p=calcPid(0,0);
   delete p.yp; delete p.yi;   // 偏航由飞控自己定：空中测一次方向，测准后自己打开并保存
-  ['angP','rp','ri','rd','pp','pi','pd','yp','yi','idle','mthr','iThr','ya','yff','crate','lp2','dfc','cap'].forEach(k=>{ if(p[k]!=null) send('E,'+k+','+p[k]); });
+  ['angP','rp','ri','rd','pp','pi','pd','yp','yi','idle','mthr','iThr','ya','yff','crate','lp2','dfc','cap','kff','kdz','tz','dzmax'].forEach(k=>{ if(p[k]!=null) send('E,'+k+','+p[k]); });
   saveIfSafe();
-  pvWant={}; ['angP','rp','ri','rd','pp','pi','pd','mthr','yff','crate','lp2','dfc','cap'].forEach(k=>{ if(typeof p[k]==='number') pvWant[k]=p[k]; }); pvTry=0;
+  pvWant={}; ['angP','rp','ri','rd','pp','pi','pd','mthr','yff','crate','lp2','dfc','cap','kff','kdz','tz','dzmax'].forEach(k=>{ if(typeof p[k]==='number') pvWant[k]=p[k]; }); pvTry=0;
   setTimeout(()=>send('C'),900);
   if(!canSave) $('#saved').textContent='只改内存（原参数在飞机里没动）';
   $('#pidTxt').textContent='P '+p.rp+' · I '+p.ri+' · D '+p.rd+' · 角度 '+p.angP;
@@ -1054,13 +1070,15 @@ const PDEF=[
   {k:'ri',ks:['ri','pi'],n:'角速度 I',st:0.05,lo:0,hi:2,d:2,h:'总往一边慢慢歪 → 加；慢慢来回大摆 → 减'},
   {k:'angP',ks:['angP'],n:'角度 P',st:0.25,lo:1,hi:10,d:2,h:'回正慢、松杆后不回平 → 加；回正冲过头 → 减'},
   {k:'yff',ks:['yff'],n:'偏航补偿',st:5,lo:-200,hi:200,d:0,h:'一起飞就往一个方向转：转得更快了就往反方向调'},
+  {k:'kff',ks:['kff'],n:'杆量前馈',st:0.1,lo:0,hi:1.5,d:1,h:'打杆后反应慢、跟不上 → 加；一打杆就冲过头 → 减（v19）'},
+  {k:'kdz',ks:['kdz'],n:'高度阻尼',st:50,lo:0,hi:800,d:0,h:'高度一上一下起伏 → 加；油门发抖、上下抽动 → 减（v19）'},
   // v18 对齐 Crazyflie 的几项，点 ± 在几个选项之间切换，方便一项项对比
   {k:'crate',ks:['crate'],n:'控制频率',opts:[250,500,1000],lab:['250 Hz（旧）','500 Hz（CF）','1000 Hz'],h:'传感器始终 1 kHz；这是姿态/角速度环的频率'},
   {k:'lp2',ks:['lp2'],n:'陀螺滤波',opts:[0,1],lab:['一阶 60 Hz（旧）','二阶 80/30 Hz（CF）'],h:'陀螺二阶 80 Hz、加计二阶 30 Hz'},
   {k:'dfc',ks:['dfc'],n:'D 项低通',opts:[0,30,60,100],lab:['不滤（CF）','30 Hz（旧）','60 Hz','100 Hz'],h:'电机发烫或嗡嗡抖再打开'},
   {k:'cap',ks:['cap'],n:'顶满处理',opts:[0,1],lab:['按比例缩（旧）','整体平移（CF）'],h:'某路顶到上限时四路一起减，保住扶正的差值'},
 ];
-const REC={rp:3.5,rd:0.08,ri:1.0,angP:6,yff:-60,crate:500,lp2:1,dfc:30,cap:1};   // 11-18 测试架上调出来的   // Claude 推荐（11-16，49 g 带保护圈）
+const REC={rp:3.5,rd:0.08,ri:1.0,angP:6,yff:-60,crate:500,lp2:1,dfc:30,cap:1,kff:0.4,kdz:350};   // 11-18 测试架上调出来的   // Claude 推荐（11-16，49 g 带保护圈）
 $('#ptab').innerHTML=PDEF.map(p=>'<div class="prow" data-k="'+p.k+'"><b>'+p.n+'</b><button data-d="-1">−</button><span class="pv">--</span><button data-d="1">+</button><span class="ph">'+p.h+'</span></div>').join('');
 function ptabShow(){ PDEF.forEach(p=>{ const v=BASE[p.k], e=$('.prow[data-k="'+p.k+'"] .pv');
     if(p.opts){ const i=p.opts.indexOf(v); e.textContent=i>=0?p.lab[i]:'--'; } else e.textContent=(typeof v==='number')?v.toFixed(p.d):'--'; });
@@ -1078,6 +1096,67 @@ $$('.prow').forEach(r=>{ const p=PDEF.find(x=>x.k===r.dataset.k);
     else setParam(p,(+BASE[p.k]||0)+p.st*(+b.dataset.d)); })); });
 $('#btnDef').addEventListener('click',()=>{ PDEF.forEach(p=>setParam(p,REC[p.k])); toast('已改成推荐值'); });
 setTimeout(ptabShow,800); setInterval(ptabShow,3000);
+
+/* ---------------- 曲线：整次飞行记录（服务端 flights/full，25 Hz） ---------------- */
+const FC={names:[]};
+function fcParse(txt){
+  const L=txt.trim().split(/\r?\n/), h=L[0].split(','), cols={}; h.forEach(k=>cols[k]=[]);
+  for(let i=1;i<L.length;i++){ const a=L[i].split(','); if(a.length<h.length) continue; h.forEach((k,j)=>cols[k].push(+a[j])); }
+  return cols;
+}
+function fcPlot(svg,t,lines,ylab,fixed){
+  const W=1000,H=+svg.getAttribute('viewBox').split(' ')[3],L=46,R=W-8,T=10,B=H-20;
+  let lo=Infinity,hi=-Infinity; lines.forEach(l=>l.y.forEach(v=>{ if(isFinite(v)){lo=Math.min(lo,v);hi=Math.max(hi,v);} }));
+  if(fixed){lo=fixed[0];hi=fixed[1];} if(!(hi>lo)){lo-=1;hi+=1;} const pad=(hi-lo)*0.08; lo-=pad; hi+=pad;
+  const t0=t[0],t1=t[t.length-1]||1, X=v=>L+(v-t0)/(t1-t0||1)*(R-L), Y=v=>B-(v-lo)/(hi-lo)*(B-T);
+  let s='';
+  for(let i=0;i<=4;i++){ const v=lo+(hi-lo)*i/4; s+='<line x1="'+L+'" x2="'+R+'" y1="'+Y(v)+'" y2="'+Y(v)+'" stroke="#2a333e"/><text x="'+(L-5)+'" y="'+(Y(v)+4)+'" fill="#8a97a6" font-size="11" text-anchor="end">'+(Math.abs(hi-lo)>20?Math.round(v):v.toFixed(1))+'</text>'; }
+  for(let k=Math.ceil(t0);k<=t1;k+=Math.max(1,Math.round((t1-t0)/10))) s+='<text x="'+X(k)+'" y="'+(H-5)+'" fill="#8a97a6" font-size="11" text-anchor="middle">'+Math.round(k-t0)+'s</text>';
+  lines.forEach((l,j)=>{ let d=''; t.forEach((tv,i)=>{ const v=l.y[i]; if(isFinite(v)) d+=(d?'L':'M')+X(tv).toFixed(1)+' '+Y(v).toFixed(1); });
+    s+='<path d="'+d+'" fill="none" stroke="'+l.c+'" stroke-width="'+(l.w||1.6)+'"'+(l.dash?' stroke-dasharray="4 3"':'')+'/>';
+    s+='<text x="'+(L+8+j*150)+'" y="'+(T+12)+'" fill="'+l.c+'" font-size="12">— '+l.n+'</text>'; });
+  s+='<text x="6" y="'+(T+12)+'" fill="#8a97a6" font-size="11">'+ylab+'</text>';
+  svg.innerHTML=s;
+}
+function fcLag(tg,ac){ // 目标和实际的互相关，找最匹配的延迟（0~600 ms，25 Hz）
+  let best=0,bk=0; for(let k=0;k<=15;k++){ let s=0; for(let i=0;i+k<ac.length;i++) s+=tg[i]*ac[i+k]; if(s>best){best=s;bk=k;} } return bk*40; }
+async function fcLoad(n){
+  if(!n) return;
+  try{
+    const D2=fcParse(await (await fetch('/api/full?n='+encodeURIComponent(n))).text());
+    const on=D2.thr_cmd.map(v=>v>0); let i0=on.indexOf(true), i1=on.lastIndexOf(true); if(i0<0){i0=0;i1=D2.t.length-1;}
+    // 翻机/撞机那一下（倾角 >35°）之后不算，往前再让 0.3 s，免得把图和指标都撑坏
+    for(let i=i0;i<=i1;i++){ if(Math.abs(D2.roll[i])>35||Math.abs(D2.pitch[i])>35){ i1=Math.max(i0+1,i-8); $('#fcInfo').dataset.crash='1'; break; } }
+    const sl=k=>D2[k].slice(i0,i1+1), t=sl('t'), sr=sl('stick_r').map(v=>v*25), sp=sl('stick_p').map(v=>v*25), ro=sl('roll'), pi=sl('pitch');
+    const o=sl('o1').map((v,i)=>(v+D2.o2[i0+i]+D2.o3[i0+i]+D2.o4[i0+i])/40), vb=sl('vb_mv').map(v=>v/1000), cmd=sl('thr_cmd').map(v=>v/10);
+    const am=Math.max(8,1.5*Math.max(...sr.map(Math.abs),...sp.map(Math.abs))), rg=[-am,am], cl=a=>a.map(v=>Math.max(-am,Math.min(am,v)));
+    fcPlot($('#fcR'),t,[{y:sr,c:'#8a97a6',n:'横滚目标',dash:1},{y:cl(ro),c:'#3cc2cc',n:'实际横滚'}],'横滚 °',rg);
+    fcPlot($('#fcP'),t,[{y:sp,c:'#8a97a6',n:'俯仰目标',dash:1},{y:cl(pi),c:'#ef7a64',n:'实际俯仰'}],'俯仰 °',rg);
+    fcPlot($('#fcO'),t,[{y:o,c:'#f0b429',n:'电机平均输出 %'},{y:cmd,c:'#3b9eff',n:'油门杆 %',dash:1},{y:vb.map(v=>(v-3)*100),c:'#8a97a6',n:'电池（3.0~4.0 V）'}],'%',[0,100]);
+    // 指标
+    const st=(a,m)=>{const x=a.filter((v,i)=>m[i]); if(!x.length) return 0; const mu=x.reduce((p,q)=>p+q,0)/x.length; return Math.sqrt(x.reduce((p,q)=>p+(q-mu)*(q-mu),0)/x.length);};
+    const quiet=sr.map((v,i)=>Math.abs(v)<0.5&&Math.abs(sp[i])<0.5), stR=sr.map(v=>Math.abs(v)>1), stP=sp.map(v=>Math.abs(v)>1);
+    const ratio=(tg,ac,m)=>{let a=0,b=0; tg.forEach((v,i)=>{ if(m[i]){a+=Math.abs(ac[i]);b+=Math.abs(v);} }); return b?a/b:0;};
+    let nMax=0; for(let i=i0;i<=i1;i++){ if(Math.max(D2.o1[i],D2.o2[i],D2.o3[i],D2.o4[i])>=940) nMax++; } const oMax=nMax/Math.max(1,i1-i0+1);   // 任一电机顶到上限
+    const cells=[['空中',(t[t.length-1]-t[0]).toFixed(1)+' s'],['不打杆晃动','横滚 ±'+st(ro,quiet).toFixed(1)+'° · 俯仰 ±'+st(pi,quiet).toFixed(1)+'°'],
+      ['打杆跟到目标的','横滚 '+Math.round(100*ratio(sr,ro,stR))+'% · 俯仰 '+Math.round(100*ratio(sp,pi,stP))+'%'],
+      ['反应延迟','横滚 '+fcLag(sr,ro)+' ms · 俯仰 '+fcLag(sp,pi)+' ms'],
+      ['有电机顶满',Math.round(100*oMax)+'% 的时间'],['电池最低',Math.min(...vb).toFixed(2)+' V']];
+    if($('#fcInfo').dataset.crash){ cells.push(['结尾','翻/撞了（之后不计）']); delete $('#fcInfo').dataset.crash; }
+    $('#fcM').innerHTML=cells.map(c=>'<div>'+c[0]+'<b>'+c[1]+'</b></div>').join('');
+    $('#fcInfo').textContent=n.replace('.csv','');
+  }catch(e){ $('#fcInfo').textContent='读不到这次记录'; }
+}
+async function fcList(pick){
+  try{ const j=await (await fetch('/api/fulllist')).json(); FC.names=j.names||[];
+    $('#fcSel').innerHTML=FC.names.map(n=>'<option>'+n+'</option>').join('');
+    if(pick||!$('#fcSel').value){ $('#fcSel').value=FC.names[0]||''; } fcLoad($('#fcSel').value); }catch(e){}
+}
+$('#fcSel').addEventListener('change',()=>{fcLoad($('#fcSel').value);$('#fcSel').blur();});
+$('#fcRef').addEventListener('click',()=>fcList(true));
+fcList(true);
+// 每次上锁后 2 秒自动刷新成这一次
+{ let was=false; setInterval(()=>{ if(was&&!st.armed){ setTimeout(()=>{fcList(true); toast('📈 这次的曲线在「曲线」页');},2000); } was=st.armed; },300); }
 
 /* ---------------- 推力测试：H,pm 四路同占空比（原始，不过电压补偿），每 300 ms 续命 ---------------- */
 const TT={pm:0,t0:0,vs:[],rows:[],sess:new Date().toISOString().slice(5,16).replace('T',' ')};

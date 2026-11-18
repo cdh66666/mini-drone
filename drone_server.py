@@ -576,6 +576,20 @@ class H(BaseHTTPRequestHandler):
             except Exception:
                 pass
             return self._json({"ok": 1})
+        if u.path == "/api/fulllist":   # 最近的整次飞行记录（调试台「曲线」页）
+            d = os.path.join(HERE, "flights", "full")
+            try: names = sorted([f for f in os.listdir(d) if f.endswith(".csv")], reverse=True)[:30]
+            except Exception: names = []
+            return self._json({"names": names})
+        if u.path == "/api/full":
+            n = os.path.basename(q.get("n", [""])[0])
+            fp = os.path.join(HERE, "flights", "full", n)
+            if not n.endswith(".csv") or not os.path.exists(fp):
+                self.send_response(404); self.end_headers(); return
+            b = open(fp, "rb").read()
+            self.send_response(200); self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.send_header("Cache-Control", "no-store"); self.send_header("Content-Length", str(len(b)))
+            self.end_headers(); self.wfile.write(b); return
         if u.path == "/api/thrust":  # 推力测试一行：占空比‰、秤读数增量 g、当时电压 mV、去皮读数
             fn = os.path.join(HERE, "flights", "thrust_log.csv")
             try:
@@ -593,7 +607,7 @@ class H(BaseHTTPRequestHandler):
                 try: j = json.load(open(fn, encoding="utf-8"))
                 except Exception: return self._json({"err": "tune.json 读不了"})
                 k, v = q.get("set", [""])[0], q.get("v", [""])[0]
-                if k in ("rp", "pp", "rd", "pd", "ri", "pi", "angP", "yff", "crate", "lp2", "dfc", "cap") and v:
+                if k in ("rp", "pp", "rd", "pd", "ri", "pi", "angP", "yff", "crate", "lp2", "dfc", "cap", "kff", "kdz", "tz", "dzmax") and v:
                     try:
                         j[k] = float(v)
                         with open(fn + ".tmp", "w", encoding="utf-8") as f: json.dump(j, f, ensure_ascii=False)
