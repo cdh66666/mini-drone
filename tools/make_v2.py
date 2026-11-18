@@ -1248,5 +1248,31 @@ rep('''  if (vbatMv > 1000 && vbatMv < 3250) { disarm(F_BATT); return; }''', '''
     const int thrNow = P.idle + (int)((float)g_thr * (float)(P.mthr - P.idle) / 1000.0f);
     if (lowMs && nowMs - lowMs > 1000 && thrNow < g_iThr) { disarm(F_BATT); return; }   // 只在地上才因低电量上锁
   }''')
+# v18 允许解锁的倾角 20° → 40°（用户要求 ≥35°：在测试架上默认就是歪的）
+rep('''  if (fabsf(g_roll) > 20.0f || fabsf(g_pitch) > 20.0f) { why = "机身没放平（倾角需 <20°）"; return false; }''',
+    '''  if (fabsf(g_roll) > 40.0f || fabsf(g_pitch) > 40.0f) { why = "机身太歪（倾角需 <40°）"; return false; }''')
+# v18 解锁后只听一个遥控端：11-18 实测手机页（WebSocket，thr=0）和电脑（UDP，thr=730）同时发，
+# 油门每秒被拉回 0 十几次 → 软启动反复重来，飞不起来。规则：解锁后第一个发来有效杆量的通道独占，上锁后释放。
+# 1=UDP（电脑服务） 2=WebSocket（手机） 3=HTTP /api/stick。急停 X / stop 任何通道都有效。
+rep('static void disarm(uint32_t fault) {', '''static volatile uint8_t g_ctlSrc = 0;   // v18 当前独占控制的通道（0 = 还没定）
+static void disarm(uint32_t fault) {
+  g_ctlSrc = 0;''')
+rep('''        if (live && g_armed) {
+          if (t < 0) t = 0; if (t > 1000) t = 1000;
+          g_thr = t;''', '''        if (live && g_armed && (g_ctlSrc == 0 || g_ctlSrc == 1)) {
+          g_ctlSrc = 1;
+          if (t < 0) t = 0; if (t > 1000) t = 1000;
+          g_thr = t;''')
+rep('''          if (live && g_armed) {
+            if (t < 0) t = 0; if (t > 1000) t = 1000;
+            g_thr = t;''', '''          if (live && g_armed && (g_ctlSrc == 0 || g_ctlSrc == 2)) {
+            g_ctlSrc = 2;
+            if (t < 0) t = 0; if (t > 1000) t = 1000;
+            g_thr = t;''')
+rep('''  if (!g_armed) { sendJson("{\\"ok\\":0}"); return; }
+  int t = server.arg("thr").toInt();''', '''  if (!g_armed) { sendJson("{\\"ok\\":0}"); return; }
+  if (g_ctlSrc != 0 && g_ctlSrc != 3) { sendJson("{\\"ok\\":0,\\"why\\":\\"busy\\"}"); return; }
+  g_ctlSrc = 3;
+  int t = server.arg("thr").toInt();''')
 open(dst, 'w', encoding='utf-8').write(t)
 print('ok')

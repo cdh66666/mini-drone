@@ -442,7 +442,9 @@ static float g_probeD = 0;
 static float g_oY = 0;   // 输出油门低于这个（‰）时不积分：还在地上时积分会越攒越歪，一离地就猛地一歪
 static void bbStart() { bbHead = 0; bbCount = 0; bbReason = 0; bbFrozen = false; g_probeDone = false; yawF = 0; }
 
+static volatile uint8_t g_ctlSrc = 0;   // v18 当前独占控制的通道（0 = 还没定）
 static void disarm(uint32_t fault) {
+  g_ctlSrc = 0;
   if (g_armed && !bbFrozen) { bbFrozen = true; bbReason = fault; bbSeq++; }
   g_armed = false;
   g_mode = M_IDLE;
@@ -1953,7 +1955,8 @@ static void udpTask(void*) {
         g_spin = 0;
       }
       else if (b[0] == 'U' && sscanf(b, "U,%u,%d,%d,%f,%f,%f", &seq, &live, &t, &r, &p, &y) == 6) {
-        if (live && g_armed) {
+        if (live && g_armed && (g_ctlSrc == 0 || g_ctlSrc == 1)) {
+          g_ctlSrc = 1;
           if (t < 0) t = 0; if (t > 1000) t = 1000;
           g_thr = t;
           g_stkRoll  = r < -1 ? -1 : (r > 1 ? 1 : r);
@@ -2063,7 +2066,8 @@ static void wsTask(void*) {
           for (int k = 0; k < 4; k++) g_jogPm[k] = 0;
           g_spin = 0;
         } else if (p[0] == 'U' && sscanf(p, "U,%u,%d,%d,%f,%f,%f", &seq, &live, &t, &r, &pp, &y) == 6) {
-          if (live && g_armed) {
+          if (live && g_armed && (g_ctlSrc == 0 || g_ctlSrc == 2)) {
+            g_ctlSrc = 2;
             if (t < 0) t = 0; if (t > 1000) t = 1000;
             g_thr = t;
             g_stkRoll  = r < -1 ? -1 : (r > 1 ? 1 : r);
@@ -2186,7 +2190,7 @@ static bool canArm(String& why) {
   if (!imuOK) { why = "IMU 未就绪"; return false; }
   if (g_mode == M_SPIN) { why = "起转测试中"; return false; }
   if (g_thr > 0) { why = "油门不在 0"; return false; }
-  if (fabsf(g_roll) > 20.0f || fabsf(g_pitch) > 20.0f) { why = "机身没放平（倾角需 <20°）"; return false; }
+  if (fabsf(g_roll) > 40.0f || fabsf(g_pitch) > 40.0f) { why = "机身太歪（倾角需 <40°）"; return false; }
   if (fabsf(g_gr) > 25.0f || fabsf(g_gp) > 25.0f) { why = "机身还在动"; return false; }
   if (vbatMv > 1000 && vbatMv < 3300) { why = "电池低于 3.3V"; return false; }
   return true;
@@ -2220,6 +2224,8 @@ static void handleArm() {
 
 static void handleStick() {
   if (!g_armed) { sendJson("{\"ok\":0}"); return; }
+  if (g_ctlSrc != 0 && g_ctlSrc != 3) { sendJson("{\"ok\":0,\"why\":\"busy\"}"); return; }
+  g_ctlSrc = 3;
   int t = server.arg("thr").toInt();
   if (t < 0) t = 0; if (t > 1000) t = 1000;
   g_thr = t;
