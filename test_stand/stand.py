@@ -48,19 +48,20 @@ SLOT_W = 1.0
 SLOT_TOP = 5.0          # 开槽到 z=+5
 NECK_R = 8.18 / 2       # 球颈（已打印的立柱就是这个粗细，别改）
 
-# 卡钩转接件（v3）。PCB 两条长槽：y=±11.5~13.5（宽 2）、x=-3~+3（两头半圆），v5 KiCad 量的
-SLOT_Y0, SLOT_Y1, SLOT_HX = 11.5, 13.5, 3.0
-BRIDGE_HX = 8.0         # 横梁/整件厚度（x 方向 ±8）：侧躺打印时贴床的就是 x=-8 这一面
+# 托架 + 插销（v4）：托架两根硬片穿 PCB 两条长槽，露出正面的地方开横孔，插销从外往里插进横孔压住 PCB
+SLOT_Y0, SLOT_Y1, SLOT_HX = 11.5, 13.5, 2.7   # 长槽：实板照片量宽约 2.0、长约 5.4（KiCad 是 6）
+BRIDGE_HX = 8.0         # 横梁宽（x 方向 ±8）
 BRIDGE_T = 3.5
-BAT_GAP = 0.8           # 横梁顶到电池底的空隙（电池不受力，PCB 由垫台 + 倒钩夹住）
-ARM_T = 1.5             # 卡钩臂厚（槽宽 2.0，两边各 0.25）
-ARM_HX = 2.2            # 卡钩穿槽部分半宽（槽直段 ±2，两头 R1 半圆）
-BARB = 0.6              # 倒钩伸出槽外沿
-BARB_CLR = 0.1          # 倒钩下面比 PCB 上表面高
-FLOOR_T = 2.0           # 卡钩根部底板厚
+BAT_GAP = 0.8           # 横梁顶到电池底的空隙（电池不受力，PCB 由垫台 + 插销夹住）
+TAB_T = 1.6             # 硬片厚（槽宽 2.0，两边各 0.2）
+TAB_HX = 2.1            # 硬片半宽（4.2 宽，槽长 5.4）
+WIN_HX, WIN_H = 1.3, 1.3   # 横孔：宽 2.6、高 1.3，孔底和 PCB 正面齐平
+TAB_TOP = 1.6           # 横孔上面再留的高度
 TOWER_T = 3.0           # 垫台（顶住 PCB 背面）厚
 PAD_HX = 3.0            # 垫台顶面半宽（避开背面 D3/D4、C13/C14）
-TAB_H = 3.0             # 倒钩上面再伸出的捏手
+KEY_HX = 1.15           # 插销半宽（2.3 宽）
+KEY_T0, KEY_T1 = 1.1, 1.6   # 插销尖端厚 → 根部厚（1:17 斜度，插紧后不会自己松）
+KEY_L = 8.5             # 插销楔子长：插到底时尖端在 y≈±9.9（再往里有 R2 等小元件）
 
 # 立柱 / 底座
 PIVOT_H = 100.0         # 球心离桌面高度
@@ -96,12 +97,11 @@ BRIDGE_BOT = RO - 1.0                               # 横梁底（与球窝顶�
 BRIDGE_TOP = BRIDGE_BOT + BRIDGE_T
 PLATE_TOP = BRIDGE_TOP + BAT_GAP                    # = 电池底
 PCB_BOT = PLATE_TOP + BAT_H
-ARM_Y0 = (SLOT_Y0 + SLOT_Y1) / 2 - ARM_T / 2       # 卡钩臂内侧
-ARM_Y1 = ARM_Y0 + ARM_T
-TOWER_Y0 = ARM_Y1 + 1.2
+TAB_Y0 = (SLOT_Y0 + SLOT_Y1) / 2 - TAB_T / 2       # 硬片内侧
+TAB_Y1 = TAB_Y0 + TAB_T
+TOWER_Y0 = TAB_Y1                                   # 垫台紧贴硬片外侧（一起加固）
 TOWER_Y1 = TOWER_Y0 + TOWER_T
-ROOT_Z = BRIDGE_BOT + FLOOR_T
-CATCH_Z = PCB_BOT + PCB_T + BARB_CLR
+PCB_TOP = PCB_BOT + PCB_T
 
 
 def ball(r):
@@ -192,39 +192,49 @@ def _taper(y0, y1, z0, hx0, z1, hx1):
 
 
 def make_adapter(snap=SNAP):
-    """v3 卡钩转接件：横梁（球窝在正中）+ 两边各一只弹性卡钩（穿 PCB 长槽，倒钩压住 PCB 正面）
-    + 卡钩外侧的垫台（顶住 PCB 背面）。PCB 被倒钩和垫台夹住，电池不受力。前后左右都对称，不分方向。"""
-    half = None
-    # 横梁 + 根部底板（卡钩根部周围掏空，让钩臂有足够长度弯）
+    """v4 托架：球窝（口朝下）+ 横梁 + 两头 45° 斜撑落到床面（立着打不用支撑）
+    + 垫台顶住 PCB 背面 + 两根硬片穿长槽、正面开横孔。前后左右对称，不分方向。"""
+    z_bed = -Z_SOCK_BOT
     beam = _yz([(0, BRIDGE_BOT), (TOWER_Y1, BRIDGE_BOT), (TOWER_Y1, BRIDGE_TOP), (0, BRIDGE_TOP)], BRIDGE_HX)
-    beam = beam.cut(_yz([(ARM_Y0 - 1.5, ROOT_Z), (TOWER_Y0, ROOT_Z), (TOWER_Y0, BRIDGE_TOP + 1),
-                         (ARM_Y0 - 1.5, BRIDGE_TOP + 1)], BRIDGE_HX + 1))
-    # 球窝和横梁之间的加强楔（在弹性槽上面，不影响球窝弹性指）
-    wedge = _yz([(RO - 0.6, SLOT_TOP + 0.3), (RO - 0.6, BRIDGE_BOT + 0.01), (RO + 2.2, BRIDGE_BOT + 0.01)],
-                BRIDGE_HX)
-    # 垫台：宽段 → 45° 收窄 → 顶面 ±PAD_HX 贴 PCB 背面
+    # 斜撑：内侧离球窝 0.8（不碰弹性指），外侧 45° 往上接横梁两头
+    y_in = RO + 0.8
+    y_foot = y_in + 3.0
+    leg = _yz([(y_in, z_bed), (y_foot, z_bed), (TOWER_Y1, z_bed + (TOWER_Y1 - y_foot)),
+               (TOWER_Y1, BRIDGE_BOT + 0.01), (y_in, BRIDGE_BOT + 0.01)], BRIDGE_HX)
+    # 球窝和横梁之间的加强楔（在弹性槽上面）
+    wedge = _yz([(RO - 0.6, SLOT_TOP + 0.3), (RO - 0.6, BRIDGE_BOT + 0.01), (y_in + 0.01, BRIDGE_BOT + 0.01),
+                 (y_in + 0.01, SLOT_TOP + 0.3)], BRIDGE_HX)
+    # 垫台 + 硬片下段（一整块，x 方向 45° 收窄到 ±PAD_HX，避开背面元件）
     zt = PCB_BOT - 1.0 - (BRIDGE_HX - PAD_HX)
-    tower = _yz([(TOWER_Y0, BRIDGE_BOT), (TOWER_Y1, BRIDGE_BOT), (TOWER_Y1, zt), (TOWER_Y0, zt)], BRIDGE_HX)
-    tower = tower.union(_taper(TOWER_Y0, TOWER_Y1, zt - 0.01, BRIDGE_HX, PCB_BOT - 1.0, PAD_HX))
-    tower = tower.union(_yz([(TOWER_Y0, PCB_BOT - 1.01), (TOWER_Y1, PCB_BOT - 1.01),
-                             (TOWER_Y1, PCB_BOT), (TOWER_Y0, PCB_BOT)], PAD_HX))
-    # 卡钩臂：宽段 → 45° 收窄到穿槽宽度 → 倒钩 → 捏手
-    zn = PCB_BOT - 1.0
-    za = zn - (BRIDGE_HX - ARM_HX)
-    arm = _yz([(ARM_Y0, ROOT_Z - 0.01), (ARM_Y1, ROOT_Z - 0.01), (ARM_Y1, za), (ARM_Y0, za)], BRIDGE_HX)
-    arm = arm.union(_taper(ARM_Y0, ARM_Y1, za - 0.01, BRIDGE_HX, zn, ARM_HX))
-    tip_y = SLOT_Y1 + BARB
-    top = CATCH_Z + 0.3 + 1.6 + TAB_H
-    hook = _yz([(ARM_Y0, zn - 0.01), (ARM_Y1, zn - 0.01), (ARM_Y1, CATCH_Z), (tip_y, CATCH_Z),
-                (tip_y, CATCH_Z + 0.3), (ARM_Y1, CATCH_Z + 0.3 + 1.6), (ARM_Y1, top - 0.6),
-                (ARM_Y1 - 0.6, top), (ARM_Y0, top)], ARM_HX)
-    # 根部圆角（用 45° 楔代替）
-    fil = (_yz([(ARM_Y0 - 1.2, ROOT_Z), (ARM_Y0 + 0.01, ROOT_Z), (ARM_Y0 + 0.01, ROOT_Z + 1.2)], BRIDGE_HX)
-           .union(_yz([(ARM_Y1 - 0.01, ROOT_Z), (ARM_Y1 + 0.9, ROOT_Z), (ARM_Y1 - 0.01, ROOT_Z + 0.9)],
-                      BRIDGE_HX)))
-    half = beam.union(wedge).union(tower).union(arm).union(hook).union(fil)
+    blk = _yz([(TAB_Y0, BRIDGE_TOP - 0.01), (TOWER_Y1, BRIDGE_TOP - 0.01), (TOWER_Y1, zt), (TAB_Y0, zt)],
+              BRIDGE_HX)
+    blk = blk.union(_taper(TAB_Y0, TOWER_Y1, zt - 0.01, BRIDGE_HX, PCB_BOT - 1.0, PAD_HX))
+    blk = blk.union(_yz([(TOWER_Y0, PCB_BOT - 1.01), (TOWER_Y1, PCB_BOT - 1.01),
+                         (TOWER_Y1, PCB_BOT), (TOWER_Y0, PCB_BOT)], PAD_HX))
+    # 硬片：从垫台收窄段一直伸到 PCB 正面上方，开横孔，顶上倒角好对槽
+    z_top = PCB_TOP + WIN_H + TAB_TOP
+    tab = _yz([(TAB_Y0, zt), (TAB_Y1, zt), (TAB_Y1, z_top - 0.5), (TAB_Y1 - 0.5, z_top),
+               (TAB_Y0 + 0.5, z_top), (TAB_Y0, z_top - 0.5)], TAB_HX)
+    tab = tab.cut(cq.Workplane("XY").workplane(offset=PCB_TOP).center(0, (TAB_Y0 + TAB_Y1) / 2)
+                  .rect(2 * WIN_HX, TAB_T + 2).extrude(WIN_H))
+    half = beam.union(leg).union(wedge).union(blk).union(tab)
     whole = half.union(half.mirror("XZ"))
     return whole.union(make_socket(snap, BRIDGE_BOT + 0.5))
+
+
+def make_key():
+    """插销（打 2 个）：扁楔子，尖端在 y=0、往 +y 变厚，头在 +y 端。底面贴 PCB 正面（z=PCB_TOP），平放打印。"""
+    wedge = _yz([(0, PCB_TOP), (KEY_L, PCB_TOP), (KEY_L, PCB_TOP + KEY_T1), (0, PCB_TOP + KEY_T0)], KEY_HX)
+    head = (cq.Workplane("XY").workplane(offset=PCB_TOP).center(0, KEY_L + 1.25).rect(4.5, 2.5).extrude(3.0)
+            .edges("|Y").fillet(0.6))
+    return wedge.union(head)
+
+
+def key_seated(side=1):
+    """插销插到底：楔子厚度在横孔外沿处 = 横孔高（装配图和碰撞检查用）"""
+    d = KEY_L * (WIN_H - KEY_T0) / (KEY_T1 - KEY_T0)
+    k = make_key().translate((0, TAB_Y1 - d, 0))
+    return k if side > 0 else k.mirror("XZ")
 
 
 def make_socket_test(snap, idx):
@@ -341,7 +351,7 @@ def export(wp, name, rot=None, zmin_to0=True):
 
 
 def build():
-    print(f"PCB 底 z={PCB_BOT:.2f}  倒钩下沿 z={CATCH_Z:.2f}  钩臂 y {ARM_Y0:.2f}~{ARM_Y1:.2f}  垫台 y {TOWER_Y0:.2f}~{TOWER_Y1:.2f}")
+    print(f"PCB 底 z={PCB_BOT:.2f}  PCB 顶 z={PCB_TOP:.2f}  硬片 y {TAB_Y0:.2f}~{TAB_Y1:.2f}  垫台 y {TOWER_Y0:.2f}~{TOWER_Y1:.2f}")
     print(f"球 Ø{BALL_D}  球颈 Ø{2*NECK_R:.2f}  卡口 Ø{2*R_LIP:.2f}（深 {H_LIP:.2f}）  限位 ±{TILT_LIM:.1f}°"
           f"  横梁 {BRIDGE_BOT:.2f}~{BRIDGE_TOP:.2f}  PCB 底 z={PCB_BOT:.2f}（球心上方）")
     post = make_post()
@@ -356,9 +366,9 @@ def build():
         print(f"  {i} 号：卡口比球小 {sn} mm，限位 ±{lip_geom(sn)[4]:.1f}°")
         export(make_socket_test(sn, i), f"socket_test_{i}", rot=((1, 0, 0), 180))
         # 侧躺打印：x=-8 那一面贴床，卡钩臂平躺，弯曲沿走线方向（不靠层间粘合）
-        export(make_adapter(sn), f"adapter_clip_{i}", rot=((0, 1, 0), -90))
-    for old in ("lock.stl", "adapter.stl", "adapter_1.stl", "adapter_2.stl", "adapter_3.stl",
-                "assembly/asm_lock.stl"):
+        export(make_adapter(sn), f"holder_{i}")          # 立着打：球窝口贴床
+    export(make_key(), "key")                             # 平放打，打 2 个
+    for old in ["lock.stl", "adapter.stl", "assembly/asm_lock.stl"] +                [f"{n}_{i}.stl" for n in ("adapter", "adapter_clip", "clip_test") for i in (1, 2, 3)]:
         (OUT / old).unlink(missing_ok=True)
     # 装配体（桌面坐标）
     up = (0, 0, PIVOT_H)
@@ -366,6 +376,8 @@ def build():
         "asm_base": base,
         "asm_post": post.translate(up),
         "asm_adapter": adapter.translate(up),
+        "asm_adapter_key1": key_seated(1).translate(up),
+        "asm_adapter_key2": key_seated(-1).translate(up),
         "asm_pcb": make_board()[0].translate(up),
         "asm_battery": bat.translate(up),
     }
@@ -389,8 +401,9 @@ def hit(a, b):
 
 def check(p):
     post, adapter, body, bat = p["post"], p["adapter"], p["body"], p["bat"]
+    adapter = adapter.union(key_seated(1)).union(key_seated(-1))
     board, comps = make_board()
-    print("== 卡钩转接件 vs PCB（带槽）/ 电池 / 元件：重叠体积、最近距离")
+    print("== 托架 + 插销 vs PCB（带槽）/ 电池 / 元件：重叠体积、最近距离")
     for k, v in [("PCB", board), ("电池", bat)] + list(comps.items()):
         ov = adapter.intersect(v)
         vol = ov.val().Volume() if ov.solids().size() else 0.0

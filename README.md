@@ -148,7 +148,7 @@ PCB 各层：[pcb.pdf](docs/hardware/pcb.pdf)（6 页：装配图、BOM、顶层
 ## 调参测试架（纯 3D 打印）
 
 飞机扣在球头上带桨调姿态：横滚、俯仰、偏航三轴都放开，飞不走、翻不了（限位 ±17–23°，按挑的紧度），偏航可以一直转。
-3 个打印件，不用轴承、螺丝、胶水、扎带：转接件上两只弹性卡钩直接插进 PCB 中间的两条长槽，“咔”一下就装好。CadQuery 参数化源文件、STL、打印说明见 [`test_stand/`](test_stand/README.md)。
+不用轴承、螺丝、胶水、扎带，全部不加支撑打印：托架两根硬片穿过 PCB 中间两条长槽，正面横孔里插两根斜面插销把板子夹住。CadQuery 参数化源文件、STL、打印说明见 [`test_stand/`](test_stand/README.md)。
 
 <table>
 <tr>
@@ -160,12 +160,12 @@ PCB 各层：[pcb.pdf](docs/hardware/pcb.pdf)（6 页：装配图、BOM、顶层
 <td align="center">侧面剖视：球心离桌 100 mm，重心在球心上方约 19 mm</td>
 </tr>
 <tr>
-<td><img src="docs/img/stand_clip_top.jpg" alt="卡钩穿过 PCB"></td>
+<td><img src="docs/img/stand_clip_top.jpg" alt="硬片和插销"></td>
 <td><img src="docs/img/stand_exploded.jpg" alt="爆炸图"></td>
 </tr>
 <tr>
-<td align="center">两只卡钩从下往上穿过 PCB 长槽，倒钩压住正面</td>
-<td align="center">底座 · 立柱带球头 · 卡钩转接件（带球窝）</td>
+<td align="center">托架硬片穿过 PCB 长槽，插销压住正面</td>
+<td align="center">底座 · 立柱带球头 · 托架（带球窝）· 插销 ×2</td>
 </tr>
 </table>
 
