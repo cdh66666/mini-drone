@@ -980,11 +980,11 @@ function land(){ if(st.armed&&!st.landing){st.landing=true;st.touch=0;st.landT=p
 $('#btnLand').addEventListener('click',land);
 
 /* 方向幅度滑条：WASD 按下时给多大杆量，飞行中也能拖，记在本机 */
-const ampEl=$('#amp'); ampEl.value=lsGet('fly.amp',0.24);
+const ampEl=$('#amp'); ampEl.value=lsGet('fly.amp2',0.4);   // 11-18：6° 太钝，默认改 10°（新键名，旧的 0.24 不再沿用）
 function ampV(){ return +ampEl.value||0.24; }
 function ampShow(){ $('#ampTxt').textContent=Math.round(ampV()*(curP&&curP.mang?curP.mang:25)*10)/10+'°'; }
 ampEl.addEventListener('input',ampShow);
-ampEl.addEventListener('change',()=>{ lsSet('fly.amp',ampV()); ampShow(); ampEl.blur(); });
+ampEl.addEventListener('change',()=>{ lsSet('fly.amp2',ampV()); ampShow(); ampEl.blur(); });
 ampShow(); setInterval(ampShow,2000);
 
 /* 心跳：解锁后每 100ms 发一次油门 + 方向（固件 0.9 秒收不到会自停） */

@@ -2630,7 +2630,7 @@ function nudge(d){if(!S.armed){toast('先按“起飞”');return;}C.landing=fal
 $('#tm').onclick=function(){nudge(-1);};$('#tp').onclick=function(){nudge(1);};
 
 /* ---------- 摇杆：满杆 0.3 ≈ 倾 7.5°；松手回中 ---------- */
-(function(){var pad=$('#pad'),kn=$('#knob'),act=null,MAXT=0.3;
+(function(){var pad=$('#pad'),kn=$('#knob'),act=null,MAXT=0.4;
   function upd(e){var r=pad.getBoundingClientRect(),R=r.width*0.3;
     var x=(e.clientX-(r.left+r.width/2))/R,y=(e.clientY-(r.top+r.height/2))/R,m=Math.hypot(x,y);
     if(m>1){x/=m;y/=m;m=1;}
