@@ -976,7 +976,7 @@ $('#arm').addEventListener('click',()=>{
   if(+thr.value>0){toast('油门先拉到 0',1);return;}
   send('X');send('A,1');
 });
-function land(){ if(st.armed&&!st.landing){st.landing=true;st.landT=performance.now();st.landFrom=st.cmd;toast('⬇ 降落中（再按空格 = 急停）');} }
+function land(){ if(st.armed&&!st.landing){st.landing=true;st.touch=0;st.landT=performance.now();st.landFrom=st.cmd;toast('⬇ 缓降中，触地自动停（再按空格 = 急停）');} }
 $('#btnLand').addEventListener('click',land);
 
 /* 方向幅度滑条：WASD 按下时给多大杆量，飞行中也能拖，记在本机 */
@@ -991,8 +991,19 @@ ampShow(); setInterval(ampShow,2000);
 const keys={};
 setInterval(()=>{
   if(!st.armed||!S.on)return;
-  if(st.landing){ const u=Math.min(1,(performance.now()-st.landT)/500);   // 0.5 秒落地：先慢后快（1 - u²）
-    st.target=Math.max(0,st.landFrom*(1-u*u)); st.cmd=Math.min(st.cmd,st.target); thr.value=Math.round(st.target); if(st.target<=0&&st.cmd<=0){ send('A,0'); armedUI(false); toast('落地 ✓'); return; } }
+  // 记悬停油门：在空中、油门稳了 1 秒以上，取最近的平均（降落要按它来缓降）
+  if(!st.landing&&st.cmd>40){ st.hovN=(st.hovN||0)+1; if(st.hovN>10) st.hov=st.hov?st.hov+(st.cmd-st.hov)*0.05:st.cmd; } else if(!st.landing) st.hovN=0;
+  if(st.landing){
+    // 11-18 改：0.5 秒收油门会在高处直接关电机砸下来（摔坏过一个电机）。
+    // 现在：先降到悬停油门的 92%（慢慢往下沉，固件的“压上下弹”会限住下落速度），最多 3.5 秒；
+    // 触地（竖直加速度突然跳）或 3.5 秒到了，再在 0.4 秒内收到 0 上锁。
+    const el=(performance.now()-st.landT)/1000, hv=st.hov||st.landFrom, desc=Math.round(hv*0.92);
+    if(!st.touch && el>0.4 && D.az && Math.abs(D.az-0.94)>0.35) st.touch=el;
+    let tg;
+    if(!st.touch && el<3.5) tg=Math.min(st.landFrom, desc + Math.max(0,(st.landFrom-desc)*(1-el/0.3)));
+    else { const e2=el-(st.touch||3.5); tg=Math.max(0,desc*(1-e2/0.4)); }
+    st.target=Math.max(0,tg); st.cmd=st.target; thr.value=Math.round(st.target);
+    if(st.target<=0){ send('A,0'); armedUI(false); st.touch=0; toast('落地 ✓'); return; } }
   if(st.target>st.cmd) st.cmd=Math.min(st.target,st.cmd+5);   // 往上最快 50%/秒
   else st.cmd=st.target;                                        // 往下立刻
   const T=ampV();   // 杆量 × 最大倾角 25°：0.24 ≈ 6°（3.5° 推不动，8.7° 会冲出去撞）
