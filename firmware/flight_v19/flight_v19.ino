@@ -2636,7 +2636,7 @@ function render(){
   for(var k=0;k<4;k++)$('#m'+k).style.width=Math.max(0,Math.min(100,S.o[k]/10))+'%';
   var show=S.armed?C.cmd:0;
   $('#fill').style.height=show+'%';$('#tgt').style.bottom='calc('+(S.armed?C.target:0)+'% - 1px)';
-  txt($('#tpct'),Math.round(show)+'%');
+  txt($('#tpct'),S.armed?Math.round(show)+'%':'起飞 '+tk+'%');
   $('#tkm').style.bottom=tk+'%';
   txt($('#goT'),S.armed?'回到 '+tk+'%':'起飞');txt($('#goS'),S.armed?'点一下':'按住 0.6 秒 → '+tk+'%');
 }
@@ -2690,7 +2690,9 @@ window.addEventListener('pagehide',function(){if(S.armed)estop();});
     C.y=k*0.5;yi.style.transform='translateX('+(k*40).toFixed(0)+'px)';});
   ['pointerup','pointercancel','lostpointercapture'].forEach(function(ev){el.addEventListener(ev,end);});
 })();
-function nudge(d){if(!S.armed){toast('先按“起飞”');return;}C.landing=false;C.target=Math.max(0,Math.min(100,Math.round(C.target)+d));}
+function nudge(d){
+  if(!S.armed||!C.mine){tk=Math.max(30,Math.min(90,tk+d));lsSet('tk2',tk);showK();toast('起飞油门 '+tk+'%');return;}   // 没起飞：调起飞油门；飞行中：调当前油门
+  C.landing=false;C.target=Math.max(0,Math.min(100,Math.round(C.target)+d));}
 $('#tm').onclick=function(){nudge(-1);};$('#tp').onclick=function(){nudge(1);};
 
 /* ---------- 摇杆：满杆 0.3 ≈ 倾 7.5°；松手回中 ---------- */
