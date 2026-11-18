@@ -157,7 +157,7 @@ PCB 各层：[pcb.pdf](docs/hardware/pcb.pdf)（6 页：装配图、BOM、顶层
 </tr>
 <tr>
 <td align="center">三轴球铰，底座可压硬币、胶带贴桌</td>
-<td align="center">侧面剖视：球心离桌 100 mm，重心在球心上方约 19 mm</td>
+<td align="center">侧面剖视：球心离桌 100 mm，重心在球心上方约 21 mm</td>
 </tr>
 <tr>
 <td><img src="docs/img/stand_clip_top.jpg" alt="硬片和插销"></td>

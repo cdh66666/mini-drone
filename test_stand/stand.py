@@ -52,16 +52,18 @@ NECK_R = 8.18 / 2       # 球颈（已打印的立柱就是这个粗细，别改
 SLOT_Y0, SLOT_Y1, SLOT_HX = 11.5, 13.5, 2.7   # 长槽：实板照片量宽约 2.0、长约 5.4（KiCad 是 6）
 BRIDGE_HX = 8.0         # 横梁宽（x 方向 ±8）
 BRIDGE_T = 3.5
-BAT_GAP = 0.8           # 横梁顶到电池底的空隙（电池不受力，PCB 由垫台 + 插销夹住）
+BAT_GAP = 3.0           # 横梁顶到电池底的空隙（11-18 实测顶电池：0.8 → 3.0，PCB 背面到横梁共 10 mm）
 TAB_T = 1.6             # 硬片厚（槽宽 2.0，两边各 0.2）
 TAB_HX = 2.1            # 硬片半宽（4.2 宽，槽长 5.4）
-WIN_HX, WIN_H = 1.3, 1.3   # 横孔：宽 2.6、高 1.3，孔底和 PCB 正面齐平
-TAB_TOP = 1.6           # 横孔上面再留的高度
+WIN_HX = 1.3            # 横孔半宽（宽 2.6）
+WIN_BOT = -0.4          # 横孔下沿：比 PCB 正面低 0.4（托架没推到底也能插）
+WIN_TOP = 1.75          # 横孔上沿：比 PCB 正面高 1.75（插销在这里卡紧）
+TAB_TOP = 2.0           # 横孔上面再留的高度
 TOWER_T = 3.0           # 垫台（顶住 PCB 背面）厚
 PAD_HX = 3.0            # 垫台顶面半宽（避开背面 D3/D4、C13/C14）
 KEY_HX = 1.15           # 插销半宽（2.3 宽）
-KEY_T0, KEY_T1 = 1.1, 1.6   # 插销尖端厚 → 根部厚（1:17 斜度，插紧后不会自己松）
-KEY_L = 8.5             # 插销楔子长：插到底时尖端在 y≈±9.9（再往里有 R2 等小元件）
+KEY_T0, KEY_T1 = 1.2, 1.9   # 插销尖端厚 → 根部厚（斜面插紧）
+KEY_L = 3.5             # 楔子长：头顶到硬片就停，此时尖端在 y=±9.8，戳不到模组和 R2
 
 # 立柱 / 底座
 PIVOT_H = 100.0         # 球心离桌面高度
@@ -212,11 +214,11 @@ def make_adapter(snap=SNAP):
     blk = blk.union(_yz([(TOWER_Y0, PCB_BOT - 1.01), (TOWER_Y1, PCB_BOT - 1.01),
                          (TOWER_Y1, PCB_BOT), (TOWER_Y0, PCB_BOT)], PAD_HX))
     # 硬片：从垫台收窄段一直伸到 PCB 正面上方，开横孔，顶上倒角好对槽
-    z_top = PCB_TOP + WIN_H + TAB_TOP
+    z_top = PCB_TOP + WIN_TOP + TAB_TOP
     tab = _yz([(TAB_Y0, zt), (TAB_Y1, zt), (TAB_Y1, z_top - 0.5), (TAB_Y1 - 0.5, z_top),
                (TAB_Y0 + 0.5, z_top), (TAB_Y0, z_top - 0.5)], TAB_HX)
-    tab = tab.cut(cq.Workplane("XY").workplane(offset=PCB_TOP).center(0, (TAB_Y0 + TAB_Y1) / 2)
-                  .rect(2 * WIN_HX, TAB_T + 2).extrude(WIN_H))
+    tab = tab.cut(cq.Workplane("XY").workplane(offset=PCB_TOP + WIN_BOT).center(0, (TAB_Y0 + TAB_Y1) / 2)
+                  .rect(2 * WIN_HX, TAB_T + 2).extrude(WIN_TOP - WIN_BOT))
     half = beam.union(leg).union(wedge).union(blk).union(tab)
     whole = half.union(half.mirror("XZ"))
     return whole.union(make_socket(snap, BRIDGE_BOT + 0.5))
@@ -231,9 +233,9 @@ def make_key():
 
 
 def key_seated(side=1):
-    """插销插到底：楔子厚度在横孔外沿处 = 横孔高（装配图和碰撞检查用）"""
-    d = KEY_L * (WIN_H - KEY_T0) / (KEY_T1 - KEY_T0)
-    k = make_key().translate((0, TAB_Y1 - d, 0))
+    """插销卡紧的位置（名义尺寸）：楔子厚度在横孔外沿处 = 横孔高（装配图和碰撞检查用）"""
+    back = KEY_L * (KEY_T1 - WIN_TOP) / (KEY_T1 - KEY_T0)    # 在横孔外沿厚度 = 孔高时卡住，离插到底还差这么多
+    k = make_key().translate((0, TAB_Y1 - KEY_L + back, 0))
     return k if side > 0 else k.mirror("XZ")
 
 

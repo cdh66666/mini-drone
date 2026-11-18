@@ -13,7 +13,7 @@ plt.rcParams["font.sans-serif"] = ["Microsoft YaHei"]
 plt.rcParams["axes.unicode_minus"] = False
 ASM = Path(__file__).resolve().parent / "stl" / "assembly"
 PIVOT_H = 100.0
-CG_ABOVE = 19.0   # 估算：电机座 16 g、电机 10 g、电池 8 g、PCB 8 g… 见 README
+CG_ABOVE = 21.0   # 估算：电机座 16 g、电机 10 g、电池 8 g、PCB 8 g… 见 README
 
 COL = {"base": "#2f6db5", "post": "#2f6db5", "adapter": "#f07a1a",
        "pcb": "#0c4a22", "battery": "#b9bcc4", "mount": "#9a9a96", "prop": "#333"}
