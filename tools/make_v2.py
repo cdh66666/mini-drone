@@ -1303,5 +1303,31 @@ rep('  else if (k == "crate") g_crate =', '  else if (k == "kff") g_kff = (v < 0
 rep('      else if (!strcmp(k, "crate")) g_crate =', '      else if (!strcmp(k, "kff")) g_kff = (v < 0 ? 0 : (v > 2 ? 2 : v));\n      else if (!strcmp(k, "kdz")) g_kdz = v;\n      else if (!strcmp(k, "tz")) g_tz = v;\n      else if (!strcmp(k, "dzmax")) g_dzmax = v;\n      else if (!strcmp(k, "crate")) g_crate =')
 rep('\\"cap\\":%d,\\"dfc\\":%.1f}",', '\\"cap\\":%d,\\"dfc\\":%.1f,\\"kff\\":%.2f,\\"kdz\\":%.0f,\\"tz\\":%.2f,\\"dzmax\\":%.0f}",')
 rep('g_crate, g_lp2, g_cap, (double)g_dfc);', 'g_crate, g_lp2, g_cap, (double)g_dfc, (double)g_kff, (double)g_kdz, (double)g_tz, (double)g_dzmax);')
+# v19 推力测试可以单测一个电机：H,pm,ch / hspin?pm=&ch=（ch 0 = 四个一起，1~4 = 单个）
+rep('static bool g_spinRef = false;', 'static volatile int g_spinCh = 0;   // v19 推力测试：0 = 四个一起，1~4 = 只转这一个\nstatic bool g_spinRef = false;')
+rep('''    int o[4] = {g_spin, g_spin, g_spin, g_spin};   // 原始占空比（不过电压补偿），推力测试要的就是这个''',
+    '''    int o[4] = {g_spin, g_spin, g_spin, g_spin};   // 原始占空比（不过电压补偿），推力测试要的就是这个
+    if (g_spinCh >= 1 && g_spinCh <= 4) for (int i = 0; i < 4; i++) if (i != g_spinCh - 1) o[i] = 0;''')
+rep('''    if (sscanf(s, "H,%d", &pm) == 1) {''', '''    int ch = 0;
+    if (sscanf(s, "H,%d,%d", &pm, &ch) >= 1) {
+      g_spinCh = (ch >= 1 && ch <= 4) ? ch : 0;''')
+rep('''  int pm = server.arg("pm").toInt();
+  if (pm < 0) pm = 0; if (pm > 950) pm = 950;''', '''  int pm = server.arg("pm").toInt();
+  { const int ch = server.arg("ch").toInt(); g_spinCh = (ch >= 1 && ch <= 4) ? ch : 0; }
+  if (pm < 0) pm = 0; if (pm > 950) pm = 950;''')
+# v19 每个电机的推力补偿系数 mg1~mg4（由推力页单测算出来）：混控之后乘上，让四个电机出力一样
+rep('static float g_kff = 0.4f;', 'static float g_kff = 0.4f;\nstatic float g_mg[4] = {1, 1, 1, 1};                // v19 每个电机推力补偿系数（弱的 >1）')
+rep('''  mixOutput(thr, oR * k * vcc, oP * k * vcc, oY * k * vcc, o);
+  writeMotors(o);''', '''  mixOutput(thr, oR * k * vcc, oP * k * vcc, oY * k * vcc, o);
+  for (int i = 0; i < 4; i++) { int v = (int)lrintf((float)o[i] * g_mg[i]); if (v > P.mthr) v = P.mthr; if (v < 0) v = 0; o[i] = v; }
+  writeMotors(o);''')
+rep('  prefs.putFloat("kff", g_kff);', '  prefs.putFloat("mg1", g_mg[0]); prefs.putFloat("mg2", g_mg[1]); prefs.putFloat("mg3", g_mg[2]); prefs.putFloat("mg4", g_mg[3]);\n  prefs.putFloat("kff", g_kff);')
+rep('    g_kff = prefs.getFloat("kff", g_kff);', '    g_mg[0] = prefs.getFloat("mg1", 1); g_mg[1] = prefs.getFloat("mg2", 1); g_mg[2] = prefs.getFloat("mg3", 1); g_mg[3] = prefs.getFloat("mg4", 1);\n    g_kff = prefs.getFloat("kff", g_kff);')
+_mg = ''.join('\n  else if (k == "mg%d") g_mg[%d] = (v < 0.7f ? 0.7f : (v > 1.4f ? 1.4f : v));' % (i + 1, i) for i in range(4))
+rep('  else if (k == "kff") g_kff =', _mg.lstrip('\n') + '\n  else if (k == "kff") g_kff =')
+_mg2 = ''.join('\n      else if (!strcmp(k, "mg%d")) g_mg[%d] = (v < 0.7f ? 0.7f : (v > 1.4f ? 1.4f : v));' % (i + 1, i) for i in range(4))
+rep('      else if (!strcmp(k, "kff")) g_kff =', _mg2.lstrip('\n') + '\n      else if (!strcmp(k, "kff")) g_kff =')
+rep('\\"dzmax\\":%.0f}",', '\\"dzmax\\":%.0f,\\"mg1\\":%.3f,\\"mg2\\":%.3f,\\"mg3\\":%.3f,\\"mg4\\":%.3f}",')
+rep('(double)g_tz, (double)g_dzmax);', '(double)g_tz, (double)g_dzmax, (double)g_mg[0], (double)g_mg[1], (double)g_mg[2], (double)g_mg[3]);')
 open(dst, 'w', encoding='utf-8').write(t)
 print('ok')

@@ -127,7 +127,7 @@ h2{margin:0;font-size:24px}
 #toast.show{opacity:1}
 #toast.e{background:#7a1214}
 .inst{min-width:0}
-.camv[hidden]{display:none}
+[hidden]{display:none!important}
 .ctl,.setup{display:flex;flex-direction:column;gap:10px}
 .mrec{display:flex;flex-direction:column;gap:8px}
 .mr{display:flex;align-items:center;gap:6px;flex-wrap:nowrap}
@@ -143,6 +143,14 @@ h2{margin:0;font-size:24px}
 .prow .ph{color:var(--dim);font-size:12px}
 @media (max-width:640px){.prow{grid-template-columns:72px 32px minmax(0,1fr) 32px}.prow .ph{grid-column:1/-1;margin-top:-4px}}
 .step[data-s="6"]{gap:10px}
+.ftabs{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.ftabs button{padding:7px 0;font-size:15px}.ftabs button.cur{background:var(--acc);color:#fff}
+.fpanel{display:flex;flex-direction:column;gap:8px;min-height:0;overflow:auto}
+.fpanel .ptab{padding:8px}.fpanel .prow{grid-template-columns:76px 30px 120px 30px minmax(0,1fr);gap:6px}
+.fpanel .prow .ph{font-size:11px}
+.fpanel .fcp svg{max-height:150px}
+.fly.fp-wide{grid-template-columns:110px minmax(0,1fr) minmax(0,1.3fr)}
+nav button[data-s="4"],nav button[data-s="6"]{display:none}
 #fcSel{font:inherit;padding:6px 8px;border-radius:8px;border:1px solid var(--line);background:#0f1318;color:var(--fg)}
 .fcm{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}
 .fcm div{background:var(--card);border-radius:10px;padding:8px 10px;font-size:13px;color:var(--dim)}
@@ -151,6 +159,8 @@ h2{margin:0;font-size:24px}
 .fcp svg{width:100%;background:var(--card);border-radius:10px}
 .tt{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);gap:14px;min-height:0}
 .ttl,.ttr{display:flex;flex-direction:column;gap:10px;min-width:0}
+.ttch{display:grid;grid-template-columns:1.6fr repeat(4,1fr);gap:6px}
+.ttch button{padding:8px 0;font-size:14px}.ttch button.cur{background:var(--acc);color:#fff}
 .ttlv{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
 .ttlv button{padding:10px 0;font-size:16px}
 .ttlv button.cur{background:var(--warn);color:#2a1d00}
@@ -199,6 +209,10 @@ h2{margin:0;font-size:24px}
   .tpad{grid-template-columns:repeat(3,34px);gap:4px}
   .tpad button{height:30px}
   .khint{display:none}
+  .fly.fp-wide{grid-template-columns:64px minmax(0,1fr)}
+  .fly.fp-wide>.mid{display:none}          /* 窄屏看参数/曲线时先收起仪表，空间给面板 */
+  .fly.fp-wide>.thr{grid-row:1/2}
+  .fly.fp-wide>.side{grid-row:1/2;grid-column:2}
   .step[data-s="2"]{gap:10px}
   .step[data-s="2"] .warnbar{font-size:16px;padding:8px 14px}.step[data-s="2"] .warnbar .i{font-size:22px}
   .step[data-s="2"] .row{gap:14px!important;flex-wrap:nowrap}
@@ -388,6 +402,9 @@ h2{margin:0;font-size:24px}
         <button class="ghost" id="btnLand">⬇ 降落<small class="dim" style="font-size:12px;margin-left:4px">空格</small></button>
       </div>
       <div class="amp"><span class="cap">方向幅度</span><input type="range" id="amp" min="0.04" max="0.6" step="0.02"><b id="ampTxt">--</b></div>
+      <div class="ftabs" id="ftabs"><button data-t="ctl" class="cur">控制</button><button data-t="par">参数</button><button data-t="crv">曲线</button></div>
+      <div class="fpanel" id="fpPar" hidden></div>
+      <div class="fpanel" id="fpCrv" hidden></div>
       <div class="setup">
       <div class="trim">
         <div class="cap">配平 <span class="dim" id="trimTxt">--</span></div>
@@ -437,7 +454,10 @@ h2{margin:0;font-size:24px}
     <div class="ttl">
       <div class="tog" id="ttOk"><span class="box"></span>已倒置粘牢，桨旁边没东西</div>
       <div class="cap">点一档：四个电机一起转（最多 10 秒），看秤稳定后输入读数，回车记录并停转</div>
+      <div class="ttch" id="ttCh"><button data-c="0" class="cur">四个一起</button><button data-c="1">M1</button><button data-c="2">M2</button><button data-c="3">M3</button><button data-c="4">M4</button></div>
       <div class="ttlv" id="ttLv"></div>
+      <div class="ttin"><button class="go" id="ttComp" style="flex:1">⚖ 按单测结果算电机补偿并写入</button></div>
+      <div class="hint" id="ttCompTxt" style="font-size:12px">单测：M1~M4 各测 3~4 档（如 40/60/80%），再点上面按钮。弱的电机补偿 &gt;1，四个出力一样。</div>
       <div class="ttnow"><span id="ttSt">没在转</span><span class="mono" id="ttV">-- V</span></div>
       <div class="ttin"><input id="ttG" type="number" step="0.1" placeholder="秤读数 g"><button class="okb" id="ttRec">记录</button><button class="ghost" id="ttStop">停</button></div>
       <div class="hint" style="font-size:12px">空格 / Esc 急停。满电测一遍、半电再测一遍，就能拟合出电压的影响。</div>
@@ -1156,10 +1176,30 @@ $('#fcSel').addEventListener('change',()=>{fcLoad($('#fcSel').value);$('#fcSel')
 $('#fcRef').addEventListener('click',()=>fcList(true));
 fcList(true);
 // 每次上锁后 2 秒自动刷新成这一次
-{ let was=false; setInterval(()=>{ if(was&&!st.armed){ setTimeout(()=>{fcList(true); toast('📈 这次的曲线在「曲线」页');},2000); } was=st.armed; },300); }
+{ let was=false; setInterval(()=>{ if(was&&!st.armed){ setTimeout(()=>{fcList(true); toast('📈 这次的曲线出来了');},2000); } was=st.armed; },300); }
+
+/* ---------------- 飞行页三合一：控制 / 参数 / 曲线（把原来两页的内容搬进来） ---------------- */
+(function(){
+  const par=$('#fpPar'), crv=$('#fpCrv'), s4=$('section[data-s="4"]'), s6=$('section[data-s="6"]');
+  [...s4.children].forEach(el=>{ if(el.tagName!=='H2') par.appendChild(el); });
+  [...s6.children].forEach(el=>crv.appendChild(el));
+  const h=crv.querySelector('h2'); if(h) h.remove();
+  ['#fcR','#fcP'].forEach(s=>$(s).setAttribute('viewBox','0 0 1000 150')); $('#fcO').setAttribute('viewBox','0 0 1000 110');
+  function show(t){
+    $$('#ftabs button').forEach(b=>b.classList.toggle('cur',b.dataset.t===t));
+    $('.side .setup').hidden=(t!=='ctl'); par.hidden=(t!=='par'); crv.hidden=(t!=='crv');
+    $('.fly').classList.toggle('fp-wide',t!=='ctl');
+    if(t==='crv') fcLoad($('#fcSel').value);
+    lsSet('fly.ftab',t);
+  }
+  $$('#ftabs button').forEach(b=>b.addEventListener('click',()=>{show(b.dataset.t);b.blur();}));
+  show(lsGet('fly.ftab','ctl'));
+  // 落地后自动切到曲线
+  let was=false; setInterval(()=>{ if(was&&!st.armed) setTimeout(()=>show('crv'),2200); was=st.armed; },300);
+})();
 
 /* ---------------- 推力测试：H,pm 四路同占空比（原始，不过电压补偿），每 300 ms 续命 ---------------- */
-const TT={pm:0,t0:0,vs:[],rows:[],sess:new Date().toISOString().slice(5,16).replace('T',' ')};
+const TT={pm:0,ch:0,t0:0,vs:[],rows:[],sess:new Date().toISOString().slice(5,16).replace('T',' ')};
 try{ TT.rows=JSON.parse(localStorage.getItem('fly.thrust')||'[]'); }catch(e){}
 const TTL=[200,300,400,500,600,700,800,900];
 $('#ttLv').innerHTML=TTL.map(p=>'<button data-p="'+p+'">'+(p/10)+'%</button>').join('');
@@ -1168,7 +1208,7 @@ function ttStop(){ if(TT.pm) send('H,0'); TT.pm=0; $$('#ttLv button').forEach(b=
 function ttStart(p){
   if(!S.on){toast('先连接',1);return;} if(st.armed){toast('先上锁',1);return;}
   if(!$('#ttOk').classList.contains('on')){toast('先确认已倒置粘牢',1);$('#ttOk').classList.add('flash');setTimeout(()=>$('#ttOk').classList.remove('flash'),500);return;}
-  TT.pm=p; TT.t0=performance.now(); TT.vs=[]; send('H,'+p);
+  TT.pm=p; TT.t0=performance.now(); TT.vs=[]; send('H,'+p+','+TT.ch);
   $$('#ttLv button').forEach(b=>b.classList.toggle('cur',+b.dataset.p===p)); $('#ttG').value=''; $('#ttG').focus();
 }
 $$('#ttLv button').forEach(b=>b.addEventListener('click',()=>ttStart(+b.dataset.p)));
@@ -1178,7 +1218,7 @@ setInterval(()=>{
   if(!TT.pm) return;
   const el=(performance.now()-TT.t0)/1000;
   if(el>10){ ttStop(); toast('转满 10 秒，自动停了；读数记下来再点一次'); return; }
-  send('H,'+TT.pm); TT.vs.push([el,D.vb]);
+  send('H,'+TT.pm+','+TT.ch); TT.vs.push([el,D.vb]);
   $('#ttSt').textContent=(TT.pm/10)+'% 转了 '+el.toFixed(0)+' 秒';
 },300);
 function ttRec(){
@@ -1186,11 +1226,11 @@ function ttRec(){
   if(!TT.pm){toast('先点一档转起来',1);return;}
   const el=(performance.now()-TT.t0)/1000, rec=TT.vs.filter(x=>x[0]>el-1.5).map(x=>x[1]);
   const mv=Math.round(rec.length?rec.reduce((a,b)=>a+b,0)/rec.length:D.vb);
-  const row={pm:TT.pm,g:g,mv:mv,s:TT.sess}; TT.rows.push(row);
+  const row={pm:TT.pm,g:g,mv:mv,s:TT.sess,ch:TT.ch}; TT.rows.push(row);
   try{ localStorage.setItem('fly.thrust',JSON.stringify(TT.rows)); }catch(e){}
-  fetch('/api/thrust?pm='+row.pm+'&g='+g+'&mv='+mv+'&raw='+g+'&tare=0&s='+encodeURIComponent(TT.sess)).catch(()=>{});
+  fetch('/api/thrust?pm='+row.pm+'&g='+g+'&mv='+mv+'&raw='+g+'&tare=0&ch='+TT.ch+'&s='+encodeURIComponent(TT.sess)).catch(()=>{});
   $$('#ttLv button').forEach(b=>{ if(+b.dataset.p===TT.pm) b.classList.add('done'); });
-  ttStop(); ttDraw(); toast('记下了：'+(row.pm/10)+'% → '+g+' g @ '+(mv/1000).toFixed(2)+' V');
+  ttStop(); ttDraw(); toast('记下了：'+(row.ch?'M'+row.ch+' ':'')+(row.pm/10)+'% → '+g+' g @ '+(mv/1000).toFixed(2)+' V');
 }
 $('#ttRec').addEventListener('click',ttRec);
 $('#ttG').addEventListener('keydown',e=>{ if(e.key==='Enter'){e.preventDefault();ttRec();}
@@ -1205,13 +1245,27 @@ function ttDraw(){
   for(let p=0;p<=100;p+=20){const x=L+(R-L)*p/100;h+='<text x="'+x+'" y="'+(B+16)+'" fill="#8a97a6" font-size="10" text-anchor="middle">'+p+'%</text>';}
   h+='<text x="'+L+'" y="10" fill="#8a97a6" font-size="10">推力 g</text>';
   const wy=B-(B-T)*49.3/gmax; h+='<line x1="'+L+'" y1="'+wy+'" x2="'+R+'" y2="'+wy+'" stroke="#f0b429" stroke-dasharray="4 4"/><text x="'+(R-2)+'" y="'+(wy-4)+'" fill="#f0b429" font-size="10" text-anchor="end">机重 49.3 g</text>';
-  TT.rows.forEach(r=>{const x=L+(R-L)*r.pm/1000,y=B-(B-T)*r.g/gmax,c=r.mv>=3900?'#2fc47a':r.mv>=3700?'#3b9eff':'#ff4d4f';h+='<circle cx="'+x+'" cy="'+y+'" r="4" fill="'+c+'"/>';});
-  h+='<text x="'+R+'" y="'+(B+30)+'" fill="#8a97a6" font-size="9" text-anchor="end">绿 ≥3.9 V · 蓝 3.7–3.9 · 红 &lt;3.7</text>';
+  const MC=['','#3cc2cc','#ef7a64','#f0b429','#b07cff'];
+  TT.rows.forEach(r=>{const x=L+(R-L)*r.pm/1000,y=B-(B-T)*r.g/gmax,c=r.ch?MC[r.ch]:(r.mv>=3900?'#2fc47a':r.mv>=3700?'#3b9eff':'#ff4d4f');h+=r.ch?'<rect x="'+(x-4)+'" y="'+(y-4)+'" width="8" height="8" fill="'+c+'"/>':'<circle cx="'+x+'" cy="'+y+'" r="4" fill="'+c+'"/>';});
+  h+='<text x="'+R+'" y="'+(B+30)+'" fill="#8a97a6" font-size="9" text-anchor="end">圆 = 四个一起（绿 ≥3.9 V 蓝 3.7–3.9 红 &lt;3.7） · 方 = 单测 <tspan fill="#3cc2cc">M1</tspan> <tspan fill="#ef7a64">M2</tspan> <tspan fill="#f0b429">M3</tspan> <tspan fill="#b07cff">M4</tspan></text>';
   S2.setAttribute('viewBox','0 0 420 244'); S2.innerHTML=h;
-  $('#ttTab').innerHTML='<div><b>占空比</b><b>推力 g</b><b>电压</b><b></b></div>'+TT.rows.slice().reverse().map((r,i)=>'<div><span>'+(r.pm/10)+'%</span><span>'+r.g+'</span><span>'+(r.mv/1000).toFixed(2)+' V</span><a class="link" data-i="'+(TT.rows.length-1-i)+'">删</a></div>').join('');
+  $('#ttTab').innerHTML='<div><b>电机·占空比</b><b>推力 g</b><b>电压</b><b></b></div>'+TT.rows.slice().reverse().map((r,i)=>'<div><span>'+(r.ch?'M'+r.ch:'全')+' '+(r.pm/10)+'%</span><span>'+r.g+'</span><span>'+(r.mv/1000).toFixed(2)+' V</span><a class="link" data-i="'+(TT.rows.length-1-i)+'">删</a></div>').join('');
   $$('#ttTab a').forEach(a=>a.addEventListener('click',()=>{TT.rows.splice(+a.dataset.i,1);try{localStorage.setItem('fly.thrust',JSON.stringify(TT.rows));}catch(e){}ttDraw();}));
 }
 ttDraw();
+$$('#ttCh button').forEach(b=>b.addEventListener('click',()=>{ if(TT.pm) ttStop(); TT.ch=+b.dataset.c; $$('#ttCh button').forEach(x=>x.classList.toggle('cur',x===b)); $$('#ttLv button').forEach(x=>x.classList.remove('done')); }));
+// 电机补偿：每个电机的「推力 / (占空比×电压)」取平均 = 这个电机有多强；弱的乘 >1 补到平均
+$('#ttComp').addEventListener('click',()=>{
+  const k=[0,0,0,0], n=[0,0,0,0];
+  TT.rows.forEach(r=>{ if(r.ch>=1&&r.ch<=4&&r.pm>=300&&r.g>0){ k[r.ch-1]+=r.g/((r.pm/1000)*(r.mv/1000)); n[r.ch-1]++; } });
+  if(n.some(x=>x<2)){ toast('四个电机每个至少单测 2 档（≥30%）再算',1); return; }
+  const kk=k.map((v,i)=>v/n[i]), avg=kk.reduce((a,b)=>a+b,0)/4;
+  const mg=kk.map(v=>Math.max(0.8,Math.min(1.25,+(avg/v).toFixed(3))));
+  if(!S.on){toast('先连接',1);return;} if(st.armed){toast('先上锁',1);return;}
+  mg.forEach((v,i)=>send('E,mg'+(i+1)+','+v)); saveIfSafe(); setTimeout(()=>send('C'),600);
+  $('#ttCompTxt').innerHTML='每个电机强弱（g/V）：'+kk.map((v,i)=>'M'+(i+1)+' '+v.toFixed(1)).join(' · ')+'<br>写入补偿：'+mg.map((v,i)=>'M'+(i+1)+' ×'+v).join(' · ')+(mg.some(v=>v>=1.25||v<=0.8)?'<br>⚠ 有电机差太多（超过 ±20%），建议换掉':'');
+  toast('电机补偿已写入 ✓');
+});
 
 /* ---------------- 模拟飞机（?mock，没接飞机时看界面用） ---------------- */
 const mock={

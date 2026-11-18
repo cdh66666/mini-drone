@@ -100,7 +100,8 @@ static float g_rot = 0.0f;
 static float g_bR = 0.0f, g_bP = 0.0f;   // 重心补偿（‰），起飞前就加上
 static int   g_crate = 500, g_lp2 = 1, g_cap = 1;   // v18 控制频率 / 二阶滤波 / 顶满整体平移
 static float g_dfc = 0.0f;                          // v18 D 项低通 Hz（0 = 不滤）
-static float g_kff = 0.4f;                          // v19 杆量前馈（°/s 每 °/s 目标变化率）
+static float g_kff = 0.4f;
+static float g_mg[4] = {1, 1, 1, 1};                // v19 每个电机推力补偿系数（弱的 >1）                          // v19 杆量前馈（°/s 每 °/s 目标变化率）
 static float g_yff = -60.0f;  // v17 偏航前馈（‰，混控 oY 单位），离地后加，存 NVS
 static float g_hov = 405.0f;  // 学到的悬停油门（‰，电压补偿前），存 NVS
 static float g_ah = 0.0f;     // 定高开关/力度（0 = 关；v13 实测估计会漂，默认关）
@@ -150,6 +151,7 @@ static void paramsSave() {
   prefs.putFloat("rot", g_rot);
   prefs.putFloat("bR", g_bR); prefs.putFloat("bP", g_bP);
   prefs.putFloat("hov", g_hov); prefs.putFloat("yff", g_yff);
+  prefs.putFloat("mg1", g_mg[0]); prefs.putFloat("mg2", g_mg[1]); prefs.putFloat("mg3", g_mg[2]); prefs.putFloat("mg4", g_mg[3]);
   prefs.putFloat("kff", g_kff); prefs.putFloat("kdz", g_kdz); prefs.putFloat("tz", g_tz); prefs.putFloat("dzmax", g_dzmax);
   prefs.putInt("crate", g_crate); prefs.putInt("lp2", g_lp2); prefs.putInt("cap", g_cap); prefs.putFloat("dfc", g_dfc);
   prefs.end();
@@ -171,6 +173,7 @@ static void paramsLoad() {
     g_rot = prefs.getFloat("rot", 0.0f);
     g_bR = prefs.getFloat("bR", 0.0f); g_bP = prefs.getFloat("bP", 0.0f);
     g_hov = prefs.getFloat("hov", g_hov); g_yff = prefs.getFloat("yff", g_yff);
+    g_mg[0] = prefs.getFloat("mg1", 1); g_mg[1] = prefs.getFloat("mg2", 1); g_mg[2] = prefs.getFloat("mg3", 1); g_mg[3] = prefs.getFloat("mg4", 1);
     g_kff = prefs.getFloat("kff", g_kff); g_kdz = prefs.getFloat("kdz", g_kdz); g_tz = prefs.getFloat("tz", g_tz); g_dzmax = prefs.getFloat("dzmax", g_dzmax);
     g_crate = prefs.getInt("crate", g_crate); g_lp2 = prefs.getInt("lp2", g_lp2); g_cap = prefs.getInt("cap", g_cap); g_dfc = prefs.getFloat("dfc", g_dfc);
     if (g_crate != 250 && g_crate != 1000) g_crate = 500;
@@ -193,6 +196,7 @@ static volatile int      g_mode = M_IDLE;
 static volatile bool     g_armed = false;
 static volatile int      g_thr = 0;        // 油门指令 0..1000
 static volatile int      g_spin = 0;
+static volatile int g_spinCh = 0;   // v19 推力测试：0 = 四个一起，1~4 = 只转这一个
 static bool g_spinRef = false; static float g_spinR0 = 0, g_spinP0 = 0;   // v18 推力测试的参考姿态       // 起转测试 ppm
 static volatile float    g_stkRoll = 0;    // -1..1
 static volatile float    g_stkPitch = 0;   // -1..1
@@ -655,6 +659,7 @@ static void controlStep(float dt) {
   // ---- 输出 ----
   if (g_mode == M_SPIN) {
     int o[4] = {g_spin, g_spin, g_spin, g_spin};   // 原始占空比（不过电压补偿），推力测试要的就是这个
+    if (g_spinCh >= 1 && g_spinCh <= 4) for (int i = 0; i < 4; i++) if (i != g_spinCh - 1) o[i] = 0;
     writeMotors(o);
     return;
   }
@@ -857,6 +862,7 @@ static void controlStep(float dt) {
 
   int o[4];
   mixOutput(thr, oR * k * vcc, oP * k * vcc, oY * k * vcc, o);
+  for (int i = 0; i < 4; i++) { int v = (int)lrintf((float)o[i] * g_mg[i]); if (v > P.mthr) v = P.mthr; if (v < 0) v = 0; o[i] = v; }
   writeMotors(o);
   static int bbDec = 0;
   if (bb && !bbFrozen && ++bbDec >= g_crate / 250) {
@@ -2130,13 +2136,13 @@ static void buildParamsJson(char* j, size_t n) {
            "\"pp\":%.3f,\"pi\":%.3f,\"pd\":%.4f,\"yp\":%.2f,"
            "\"idle\":%d,\"mthr\":%d,\"mang\":%.0f,\"trMax\":%.0f,"
            "\"trimR\":%.2f,\"trimP\":%.2f,"
-           "\"sgR\":%d,\"sgP\":%d,\"sgY\":%d,\"rot\":%.1f,\"bR\":%.1f,\"bP\":%.1f,\"hov\":%.1f,\"yff\":%.1f,\"crate\":%d,\"lp2\":%d,\"cap\":%d,\"dfc\":%.1f,\"kff\":%.2f,\"kdz\":%.0f,\"tz\":%.2f,\"dzmax\":%.0f}",
+           "\"sgR\":%d,\"sgP\":%d,\"sgY\":%d,\"rot\":%.1f,\"bR\":%.1f,\"bP\":%.1f,\"hov\":%.1f,\"yff\":%.1f,\"crate\":%d,\"lp2\":%d,\"cap\":%d,\"dfc\":%.1f,\"kff\":%.2f,\"kdz\":%.0f,\"tz\":%.2f,\"dzmax\":%.0f,\"mg1\":%.3f,\"mg2\":%.3f,\"mg3\":%.3f,\"mg4\":%.3f}",
            (double)P.angP,
            (double)P.rp, (double)P.ri, (double)P.rd,
            (double)P.pp, (double)P.pi, (double)P.pd,
            (double)P.yp, P.idle, P.mthr, (double)P.mang, (double)P.trMax,
            (double)P.trimR, (double)P.trimP,
-           P.sgR, P.sgP, P.sgY, (double)g_rot, (double)g_bR, (double)g_bP, (double)g_hov, (double)g_yff, g_crate, g_lp2, g_cap, (double)g_dfc, (double)g_kff, (double)g_kdz, (double)g_tz, (double)g_dzmax);
+           P.sgR, P.sgP, P.sgY, (double)g_rot, (double)g_bR, (double)g_bP, (double)g_hov, (double)g_yff, g_crate, g_lp2, g_cap, (double)g_dfc, (double)g_kff, (double)g_kdz, (double)g_tz, (double)g_dzmax, (double)g_mg[0], (double)g_mg[1], (double)g_mg[2], (double)g_mg[3]);
 }
 
 static void handleState() {
@@ -2255,6 +2261,7 @@ static void handleStick() {
 static void handleHSpin() {   // v18 推力测试（WiFi 版的 H,pm）：最高 950‰，1 秒没续命自停
   if (g_armed) { server.send(409, "text/plain", "armed"); return; }
   int pm = server.arg("pm").toInt();
+  { const int ch = server.arg("ch").toInt(); g_spinCh = (ch >= 1 && ch <= 4) ? ch : 0; }
   if (pm < 0) pm = 0; if (pm > 950) pm = 950;
   if (g_mode != M_SPIN) g_spinRef = false;
   g_spin = pm;
@@ -2352,6 +2359,10 @@ static void handleParam() {
   else if (k == "ht") g_ht = v;
   else if (k == "ah") g_ah = v;
   else if (k == "hov") g_hov = v;
+  else if (k == "mg1") g_mg[0] = (v < 0.7f ? 0.7f : (v > 1.4f ? 1.4f : v));
+  else if (k == "mg2") g_mg[1] = (v < 0.7f ? 0.7f : (v > 1.4f ? 1.4f : v));
+  else if (k == "mg3") g_mg[2] = (v < 0.7f ? 0.7f : (v > 1.4f ? 1.4f : v));
+  else if (k == "mg4") g_mg[3] = (v < 0.7f ? 0.7f : (v > 1.4f ? 1.4f : v));
   else if (k == "kff") g_kff = (v < 0 ? 0 : (v > 2 ? 2 : v));
   else if (k == "crate") g_crate = (v >= 900 ? 1000 : (v <= 300 ? 250 : 500));
   else if (k == "lp2") g_lp2 = v > 0.5f ? 1 : 0;
@@ -2454,6 +2465,12 @@ button{font:inherit;color:inherit}
 .sheet[hidden]{display:none}
 .box{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px 16px;width:min(94vw,420px);max-height:90vh;overflow:auto;touch-action:pan-y}
 .box h3{margin:0 0 10px;font-size:15px}
+.box.wide{width:min(96vw,900px)}
+.box canvas{width:100%;height:auto;background:#0d1622;border-radius:10px}
+.cvm{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:var(--dim);padding:6px 0}.cvm b{color:var(--tx)}
+.prm{display:flex;flex-direction:column;gap:6px;padding-bottom:6px}
+.pr{display:grid;grid-template-columns:72px 38px 1fr 38px;align-items:center;gap:6px;font-size:13px}
+.pr b{text-align:center;font-variant-numeric:tabular-nums}.pr i{grid-column:1/-1;font-style:normal;font-size:11px;color:var(--dim);margin-top:-3px}
 .sec{border-top:1px solid var(--line);padding:10px 0;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .sec .lab{flex:1;min-width:120px;font-size:13px}.sec .lab i{display:block;font-style:normal;font-size:11px;color:var(--dim)}
 .tpad{display:grid;grid-template-columns:repeat(3,38px);gap:4px}
@@ -2502,9 +2519,15 @@ button{font:inherit;color:inherit}
 </div>
 <div class="toast" id="toast"></div>
 <div class="off" id="off" hidden>没连上飞机：手机 WiFi 连 <b>DroneBench</b>，再打开 <b>192.168.4.1</b></div>
+<div class="sheet" id="crv" hidden><div class="box wide">
+  <h3>上次飞行（最后 4.8 秒）</h3>
+  <canvas id="cv" width="900" height="440"></canvas>
+  <div class="cvm" id="cvM"></div>
+  <div class="sec"><button class="lk" id="crvC">关闭</button></div>
+</div></div>
 <div class="sheet" id="sheet" hidden><div class="box">
   <h3>设置</h3>
-  <div class="sec"><div class="lab">一键起飞油门<i>60% 浮不出地效，默认 64%</i></div>
+  <div class="sec"><div class="lab">一键起飞油门<i>带保护圈 49 g：悬停约 70%</i></div>
     <button class="sb" id="km">−</button><b class="big" id="kv" style="width:56px;text-align:center">64%</b><button class="sb" id="kp">+</button></div>
   <div class="sec"><div class="lab">校准水平<i>飞机放在平的桌面上、别碰它，再点</i></div>
     <button class="lk" id="lvl" style="flex:none;padding:10px 18px">⊙ 校准</button></div>
@@ -2514,6 +2537,10 @@ button{font:inherit;color:inherit}
       <button class="sb" data-t="R,-1">◀</button><span></span><button class="sb" data-t="R,1">▶</button>
       <span></span><button class="sb" data-t="P,-1">▼</button><span></span>
     </div></div>
+  <div class="sec"><div class="lab">飞行参数<i>点 ± 马上写进飞机并存盘（飞行中不能改）</i></div></div>
+  <div class="prm" id="prm"></div>
+  <div class="sec"><div class="lab">上次飞行曲线<i>落地后自动弹出：灰 = 杆量目标，彩色 = 实际（最后 4.8 秒）</i></div>
+    <button class="lk" id="crvB" style="flex:none;padding:10px 18px">📈 看曲线</button></div>
   <div class="sec"><a class="lk" href="/bench">电机 / 校准（调试页）</a><a class="lk" href="/update">固件升级</a></div>
   <div class="sec"><button class="lk" id="close">关闭</button></div>
   <div class="ver" id="ver"></div>
@@ -2532,8 +2559,8 @@ async function get(p){var ac=new AbortController(),to=setTimeout(function(){ac.a
 
 /* ---------- 状态 ---------- */
 var S={on:false,armed:false,f:0,vb:0,roll:0,pitch:0,yaw:0,o:[0,0,0,0],rssi:0,usb:false};
-var C={cmd:0,target:0,landing:false,r:0,p:0,y:0};
-var busy=false, tk=lsGet('tk',64), lastRx=0, seq=0, ws=null, armT=0, trimDirty=false, P=null, vbF=0, pctF=-1;
+var C={cmd:0,target:0,landing:false,r:0,p:0,y:0,mine:false,hov:0,hovN:0,lt:0,lf:0,touch:0};
+var busy=false, tk=lsGet('tk2',70), lastRx=0, seq=0, ws=null, armT=0, trimDirty=false, P=null, vbF=0, pctF=-1;
 var FAULT={1:'IMU 异常',2:'信号断了',4:'倾斜太大',8:'电池没电'};
 
 /* ---------- WebSocket（端口 81）：每 50 ms 发杆量，回遥测；0.9 秒收不到飞机自己停 ---------- */
@@ -2548,10 +2575,10 @@ function connect(){
     if(a[0]!=='T'||a.length<19)return;
     lastRx=performance.now();
     S.vb=+a[2];var arm=a[3]==='1';S.f=+a[4];S.roll=+a[5];S.pitch=+a[6];
-    S.o=[+a[10],+a[11],+a[12],+a[13]];S.rssi=+a[17];S.usb=a[18]==='0';S.yaw=a.length>19?+a[19]:0;
+    S.o=[+a[10],+a[11],+a[12],+a[13]];S.az=+a[16];S.rssi=+a[17];S.usb=a[18]==='0';S.yaw=a.length>19?+a[19]:0;
     if(arm!==S.armed&&performance.now()-armT>400){
       S.armed=arm;
-      if(!arm){C.cmd=C.target=0;C.landing=false;
+      if(!arm){C.cmd=C.target=0;C.landing=false;C.mine=false;if(S.wasMine)setTimeout(bbLoad,1500);S.wasMine=false;
         if(S.f){var w=[];for(var k in FAULT)if(S.f&k)w.push(FAULT[k]);toast('飞机自己停了：'+(w.join('、')||'代码 '+S.f),1);buzz(200);}
         if(trimDirty){trimDirty=false;setTimeout(function(){get('/api/save');},300);}}
     }
@@ -2561,9 +2588,15 @@ connect();
 function wsSend(s){if(ws&&ws.readyState===1&&ws.bufferedAmount<256){ws.send(s);return true;}return false;}
 
 setInterval(function(){
-  if(C.landing){C.target=Math.max(0,C.target-1.25);if(C.target<=0){C.landing=false;disarm('落地 ✓');}}
+  if(S.armed&&C.mine&&!C.landing&&C.cmd>40){C.hovN++;if(C.hovN>20)C.hov=C.hov?C.hov+(C.cmd-C.hov)*0.03:C.cmd;}else if(!C.landing)C.hovN=0;
+  if(C.landing){   // 11-18：以前线性收油门（25%/s），高处会直接掉下来摔坏电机 → 改成按悬停油门缓降
+    var el=(performance.now()-C.lt)/1000,hv=C.hov||C.lf,desc=Math.round(hv*0.92),tg;
+    if(!C.touch&&el>0.4&&S.az&&Math.abs(S.az-0.94)>0.35)C.touch=el;
+    if(!C.touch&&el<3.5)tg=Math.min(C.lf,desc+Math.max(0,(C.lf-desc)*(1-el/0.3)));
+    else tg=Math.max(0,desc*(1-(el-(C.touch||3.5))/0.4));
+    C.target=C.cmd=Math.max(0,tg);if(C.target<=0){C.landing=false;C.touch=0;disarm('落地 ✓');}}
   if(C.target>C.cmd)C.cmd=Math.min(C.target,C.cmd+2.5);else C.cmd=C.target;      // 往上最快 50%/秒，往下立刻
-  wsSend('U,'+(++seq)+','+(S.armed?1:0)+','+Math.round(C.cmd*10)+','+C.r.toFixed(2)+','+C.p.toFixed(2)+','+C.y.toFixed(2));
+  wsSend('U,'+(++seq)+','+(S.armed&&C.mine?1:0)+','+Math.round(C.cmd*10)+','+C.r.toFixed(2)+','+C.p.toFixed(2)+','+C.y.toFixed(2));
   render();
 },50);
 
@@ -2587,7 +2620,8 @@ function render(){
     $('#rs').innerHTML=h+'</span>'+(S.rssi?' '+S.rssi:'');}
   var st=$('#st'),s,c;
   if(!on){s='没连上';c='err';}
-  else if(S.armed){s=C.landing?'降落中…':'飞行中';c='ok';}
+  else if(S.armed&&!C.mine){s='电脑在遥控';c='warn';}
+  else if(S.armed){s=C.landing?'缓降中…':'飞行中';c='ok';}
   else if(S.f&1){s='IMU 异常，不能起飞';c='err';}
   else if(S.vb&&S.vb<3400){s='电量低，先充电';c='warn';}
   else{s='待机 · 可以起飞';c='';}
@@ -2610,7 +2644,7 @@ async function takeoff(){
   var r=await get('/api/arm?on=1');
   if(!r){toast('网络不通，没起飞',1);return;}
   if(!r.ok){toast('不能起飞：'+(r.why||'条件不满足'),1);return;}
-  S.armed=true;armT=performance.now();C.landing=false;C.target=C.cmd=tk;buzz(40);
+  S.armed=true;C.mine=true;S.wasMine=true;armT=performance.now();C.landing=false;C.target=C.cmd=tk;buzz(40);
 }
 function disarm(msg){
   C.cmd=C.target=0;C.landing=false;wsSend('X');get('/api/arm?on=0');
@@ -2619,7 +2653,7 @@ function disarm(msg){
 }
 function estop(){wsSend('X');get('/api/stop');C.cmd=C.target=0;C.landing=false;S.armed=false;armT=performance.now();buzz(120);toast('⏹ 已急停');}
 $('#stop').addEventListener('pointerdown',function(e){e.preventDefault();estop();});
-$('#land').addEventListener('click',function(){if(S.armed){C.landing=true;toast('降落中…');}});
+$('#land').addEventListener('click',function(){if(S.armed&&C.mine&&!C.landing){C.landing=true;C.touch=0;C.lt=performance.now();C.lf=C.cmd;toast('缓降中，触地自动停');}});
 (function(){var b=$('#go'),pg=$('#gopg'),t=0,t0=0,raf=0;
   function anim(){var p=Math.min(1,(performance.now()-t0)/600);pg.style.width=p*100+'%';if(p<1)raf=requestAnimationFrame(anim);}
   function cancel(){clearTimeout(t);cancelAnimationFrame(raf);pg.style.width='0';t=0;}
@@ -2663,8 +2697,8 @@ yawBtn('#yl',-0.4);yawBtn('#yr',0.4);
 /* ---------- 设置 ---------- */
 function showK(){txt($('#kv'),tk+'%');}
 showK();
-$('#km').onclick=function(){tk=Math.max(30,tk-1);lsSet('tk',tk);showK();};
-$('#kp').onclick=function(){tk=Math.min(90,tk+1);lsSet('tk',tk);showK();};
+$('#km').onclick=function(){tk=Math.max(30,tk-1);lsSet('tk2',tk);showK();};
+$('#kp').onclick=function(){tk=Math.min(90,tk+1);lsSet('tk2',tk);showK();};
 function trimShow(){txt($('#trimT'),P?'现在：前后 '+(+P.trimP).toFixed(1)+'° · 左右 '+(+P.trimR).toFixed(1)+'°':'读取中…');}
 $('#cfg').onclick=async function(){$('#sheet').hidden=false;trimShow();
   var p=await get('/api/params');if(p&&typeof p.trimR==='number'){P=p;trimShow();}
@@ -2694,6 +2728,53 @@ $('#lvl').onclick=async function(){
   else toast('没成功，再点一次',1);
   b.disabled=false;txt(b,'⊙ 校准');
 };
+/* ---------- 飞行参数（和电脑调试台同一套，写进飞机并存盘） ---------- */
+var PR=[{k:'rp',ks:['rp','pp'],n:'角速度 P',st:0.25,d:2,lo:0.5,hi:6,h:'软、慢晃 → 加；嗡嗡抖 → 减'},
+  {k:'rd',ks:['rd','pd'],n:'角速度 D',st:0.01,d:3,lo:0,hi:0.2,h:'冲过头 → 加；电机烫/高频抖 → 减'},
+  {k:'angP',ks:['angP'],n:'角度 P',st:0.5,d:1,lo:1,hi:10,h:'回正慢 → 加；回正冲过头 → 减'},
+  {k:'kff',ks:['kff'],n:'杆量前馈',st:0.1,d:1,lo:0,hi:1.5,h:'打杆反应慢 → 加；一打杆就冲 → 减'},
+  {k:'kdz',ks:['kdz'],n:'高度阻尼',st:50,d:0,lo:0,hi:800,h:'高度一上一下 → 加；上下抽动 → 减'}];
+$('#prm').innerHTML=PR.map(function(p){return '<div class="pr" data-k="'+p.k+'"><span>'+p.n+'</span><button class="sb" data-d="-1">−</button><b>--</b><button class="sb" data-d="1">+</button><i>'+p.h+'</i></div>';}).join('');
+function prShow(){PR.forEach(function(p){var v=P&&P[p.k];txt(document.querySelector('.pr[data-k="'+p.k+'"] b'),typeof v==='number'?v.toFixed(p.d):'--');});}
+Array.prototype.forEach.call(document.querySelectorAll('.pr'),function(row){
+  var p=PR.filter(function(x){return x.k===row.dataset.k;})[0];
+  Array.prototype.forEach.call(row.querySelectorAll('button'),function(b){b.addEventListener('click',async function(){
+    if(!P){toast('还没读到参数');return;} if(S.armed){toast('先落地再改',1);return;}
+    var v=Math.max(p.lo,Math.min(p.hi,Math.round(((+P[p.k]||0)+p.st*(+b.dataset.d))/p.st)*p.st));v=+v.toFixed(p.d+1);
+    for(var i=0;i<p.ks.length;i++){var r=await get('/api/param?k='+p.ks[i]+'&v='+v);if(!r||!r.ok){toast('没写进去，再点一次',1);return;}}
+    await get('/api/save');var q=await get('/api/params');if(q&&typeof q.trimR==='number')P=q;prShow();toast(p.n+' → '+v+' ✓');
+  });});
+});
+setInterval(prShow,1000);
+
+/* ---------- 曲线：落地后读飞机里的黑匣子（250 Hz，最后 4.8 秒），画「目标 vs 实际」 ---------- */
+async function bbLoad(){
+  var ac=new AbortController(),to=setTimeout(function(){ac.abort();},6000),txt0='';
+  try{txt0=await (await fetch('/api/bb',{cache:'no-store',signal:ac.signal})).text();}catch(e){toast('读不到黑匣子',1);return;}finally{clearTimeout(to);}
+  var L=txt0.trim().split('\n');if(L.length<20){toast('飞机里还没有飞行记录');return;}var h=L[1].split(','),ix={};h.forEach(function(k,i){ix[k]=i;});
+  var rows=L.slice(2).map(function(l){return l.split(',').map(Number);}).filter(function(a){return a.length===h.length;});
+  var i1=rows.length;for(var i=0;i<rows.length;i++){if(Math.abs(rows[i][ix.roll])>35||Math.abs(rows[i][ix.pitch])>35){i1=Math.max(10,i-75);break;}}
+  rows=rows.slice(0,i1).filter(function(a){return a[ix.thr]>0;});if(rows.length<20){toast('这次没飞起来，没有曲线');return;}
+  var t0=rows[0][ix.ms],cv=$('#cv'),g=cv.getContext('2d'),W=cv.width,H=cv.height,half=H/2;
+  g.fillStyle='#0d1622';g.fillRect(0,0,W,H);
+  var am=8;rows.forEach(function(a){am=Math.max(am,1.5*Math.abs(a[ix.stR]*25),1.5*Math.abs(a[ix.stP]*25));});
+  function panel(y0,tk,ak,col,lab){
+    var X=function(a){return 40+(a[ix.ms]-t0)/(rows[rows.length-1][ix.ms]-t0||1)*(W-50);},Y=function(v){return y0+half/2-Math.max(-am,Math.min(am,v))/am*(half/2-14);};
+    g.strokeStyle='#22324a';g.lineWidth=1;g.beginPath();g.moveTo(40,Y(0));g.lineTo(W-10,Y(0));g.stroke();
+    g.fillStyle='#8a97a6';g.font='20px sans-serif';g.fillText(lab,46,y0+24);
+    [[function(a){return a[ix[tk]]*25;},'#8a97a6'],[function(a){return a[ix[ak]];},col]].forEach(function(s){
+      g.strokeStyle=s[1];g.lineWidth=s[1]==='#8a97a6'?2:3;g.beginPath();rows.forEach(function(a,i){var x=X(a),y=Y(s[0](a));if(i)g.lineTo(x,y);else g.moveTo(x,y);});g.stroke();});
+  }
+  panel(0,'stR','roll','#2fd3c0','横滚 °（±'+Math.round(am)+'）');panel(half,'stP','pitch','#ff7a59','俯仰 °');
+  var q=rows.filter(function(a){return Math.abs(a[ix.stR])<0.01&&Math.abs(a[ix.stP])<0.01;});
+  var sd=function(k){if(!q.length)return 0;var m=q.reduce(function(s,a){return s+a[ix[k]];},0)/q.length;return Math.sqrt(q.reduce(function(s,a){return s+(a[ix[k]]-m)*(a[ix[k]]-m);},0)/q.length);};
+  var sat=rows.filter(function(a){return Math.max(a[ix.o1],a[ix.o2],a[ix.o3],a[ix.o4])>=940;}).length/rows.length;
+  $('#cvM').innerHTML='不打杆晃动 <b>横滚 ±'+sd('roll').toFixed(1)+'° · 俯仰 ±'+sd('pitch').toFixed(1)+'°</b> · 有电机顶满 <b>'+Math.round(100*sat)+'%</b>'+(i1<L.length-2?' · <b>结尾翻/撞了（之后不画）</b>':'');
+  $('#crv').hidden=false;
+}
+$('#crvB').onclick=function(){$('#sheet').hidden=true;bbLoad();};
+$('#crvC').onclick=function(){$('#crv').hidden=true;};
+$('#crv').addEventListener('click',function(e){if(e.target===this)this.hidden=true;});
 $('#fs').onclick=function(){var d=document.documentElement;
   try{(d.requestFullscreen||d.webkitRequestFullscreen).call(d).then(function(){try{screen.orientation.lock('landscape').catch(function(){});}catch(e){}}).catch(function(){});}catch(e){}};
 document.addEventListener('contextmenu',function(e){e.preventDefault();});
@@ -2900,6 +2981,10 @@ static void handleLine(char* s) {
       else if (!strcmp(k, "ht")) g_ht = v;
       else if (!strcmp(k, "ah")) g_ah = v;
       else if (!strcmp(k, "hov")) g_hov = v;
+      else if (!strcmp(k, "mg1")) g_mg[0] = (v < 0.7f ? 0.7f : (v > 1.4f ? 1.4f : v));
+      else if (!strcmp(k, "mg2")) g_mg[1] = (v < 0.7f ? 0.7f : (v > 1.4f ? 1.4f : v));
+      else if (!strcmp(k, "mg3")) g_mg[2] = (v < 0.7f ? 0.7f : (v > 1.4f ? 1.4f : v));
+      else if (!strcmp(k, "mg4")) g_mg[3] = (v < 0.7f ? 0.7f : (v > 1.4f ? 1.4f : v));
       else if (!strcmp(k, "kff")) g_kff = (v < 0 ? 0 : (v > 2 ? 2 : v));
       else if (!strcmp(k, "kdz")) g_kdz = v;
       else if (!strcmp(k, "tz")) g_tz = v;
@@ -2940,7 +3025,9 @@ static void handleLine(char* s) {
   }
   if (c == 'H') {
     int pm = 0;
-    if (sscanf(s, "H,%d", &pm) == 1) {
+    int ch = 0;
+    if (sscanf(s, "H,%d,%d", &pm, &ch) >= 1) {
+      g_spinCh = (ch >= 1 && ch <= 4) ? ch : 0;
       if (g_armed) { Serial.println("#ERR,ARMED"); return; }
       if (pm < 0) pm = 0; if (pm > 950) pm = 950;
       if (g_mode != M_SPIN) g_spinRef = false;   // 新的一次：重新记参考姿态

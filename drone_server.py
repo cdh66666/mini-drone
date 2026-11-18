@@ -351,7 +351,7 @@ class WifiLink:
                 elif c == "S":
                     self._call("/api/spin?pm=" + a[1])
                 elif c == "H":                   # 推力测试（最高 950‰）
-                    self._call("/api/hspin?pm=" + a[1])
+                    self._call("/api/hspin?pm=%s&ch=%s" % (a[1], a[2] if len(a) > 2 else "0"))
                 elif c == "R":
                     self._call("/api/zero")
                 elif c == "L":
@@ -595,9 +595,9 @@ class H(BaseHTTPRequestHandler):
             try:
                 new = not os.path.exists(fn)
                 with open(fn, "a", encoding="utf-8") as f:
-                    if new: f.write("time,pm,thrust_g,vb_mv,raw_g,tare_g,session\n")
+                    if new: f.write("time,pm,thrust_g,vb_mv,raw_g,tare_g,session,ch\n")
                     g = lambda k: q.get(k, [""])[0].replace(",", "")
-                    f.write("%s,%s,%s,%s,%s,%s,%s\n" % (time.strftime("%Y-%m-%d %H:%M:%S"), g("pm"), g("g"), g("mv"), g("raw"), g("tare"), g("s")))
+                    f.write("%s,%s,%s,%s,%s,%s,%s,%s\n" % (time.strftime("%Y-%m-%d %H:%M:%S"), g("pm"), g("g"), g("mv"), g("raw"), g("tare"), g("s"), g("ch") or "0"))
                 return self._json({"ok": 1})
             except Exception as e:
                 return self._json({"err": str(e)[:80]})
