@@ -2,14 +2,18 @@
 
 用法：
     python stand.py            # 生成 STL 到 stl/（+ 装配体 assembly_*.stl）
-    python stand.py --check    # 再做碰撞/限位检查（慢，约 1~3 分钟）
+    python stand.py --check    # 再做碰撞/限位检查
 
 坐标：以球心（转动中心）为原点，x 朝机头，y 朝左，z 朝上。单位 mm。
 零件：
     base     底座（压重物 / 胶带固定）
     post     立柱 + 球头（一体）
-    adapter  飞机转接件：电池托板 + 球窝 + 两片导向鳍（前 = 俯仰，左 = 横滚）
-    lock     单轴卡扣：卡在球头下方的八角块上，导槽夹住一片鳍 → 只剩一个轴能转
+    adapter  飞机转接件：电池托板 + 卡扣式球窝
+    socket_test_*  只有球窝那一小段的紧度试件（几分钟打完，扣到球头上挑一个）
+
+11-18 用户试装反馈：球窝太松容易脱、凸出的细支架不要 →
+    卡口下加一圈直壁（原来的斜口把卡口吃掉了，实际只卡 0.17 mm），间隙改 0.2；
+    删掉导向鳍和单轴卡扣、底座三角肋和胶带耳。球颈粗细保持已打印的 Ø8.18（立柱不用重打）。
 """
 import math
 import io
@@ -34,48 +38,50 @@ MOTOR_R = 48.7          # 电机中心到机身中心（对角线）
 
 # 球铰
 BALL_D = 12.0
-FIT = 0.25              # 球窝比球大（半径方向）
-SOCK_WALL = 1.4
-SNAP = 0.30             # 卡口比球小（半径方向），越大越难掰开
+FIT = 0.20              # 球窝比球大（半径方向）
+SOCK_WALL = 1.8
+SNAP = 0.50             # 卡口比球小（半径方向）：越大越难拔，试件 0.35 / 0.50 / 0.65
+SNAP_TESTS = (0.35, 0.50, 0.65)
+LIP_BAND = 0.3          # 卡口直壁高度（卡住球的就是这一圈）
 SLOTS = 6
 SLOT_W = 1.0
-SLOT_TOP = 5.0          # 开槽到 z=+5，指长约 7.5 mm
-LIP_CHAMFER = 0.5
-TILT_MAX = 30.0         # 限位角：球窝下沿碰到球颈
+SLOT_TOP = 5.0          # 开槽到 z=+5
+NECK_R = 8.18 / 2       # 球颈（已打印的立柱就是这个粗细，别改）
 
 # 托板
 PLATE_T = 3.0
 TUNNEL_W, TUNNEL_H = 4.0, 1.3   # 托板里的绑带孔（左右方向）
-FIN_T = 2.0             # 导向鳍厚
-FIN_R_OUT = 32.0
 
 # 立柱 / 底座
 PIVOT_H = 100.0         # 球心离桌面高度
 POST_A = 12.0           # 方柱边长
-HEAD_A, HEAD_CH = 16.0, 2.5   # 八角块（卡扣定位）边长 / 倒角
+HEAD_A, HEAD_CH = 16.0, 2.5   # 球颈下的八角块
 HEAD_TOP, HEAD_BOT = -10.0, -18.0
 BASE_D, BASE_T = 150.0, 5.0
 BOSS_D, BOSS_TOP = 34.0, 40.0
 HOLE_CLR = 0.4          # 方孔比方柱大
 HOLE_BOTTOM = 7.0       # 方孔底离桌面
 
-# 单轴卡扣
-LOCK_GAP = 0.35         # 鳍两侧间隙
-LOCK_WALL_T = 1.6
-CLIP_CLR, CLIP_WALL = 0.15, 2.2
-CLIP_OPEN = 14.0        # 卡口开口宽（八角块 16，掰开约 1 mm 卡上）
-WALL_TOP = 14.0         # 导槽墙最高处（球心为 0）
-WALL_R = 35.0           # 导槽墙外半径
-
 # ---------------- 推导量 ----------------
 RB = BALL_D / 2
 RC = RB + FIT
 RO = RC + SOCK_WALL
-R_LIP = RB - SNAP
-H_LIP = math.sqrt(RC ** 2 - R_LIP ** 2)          # 卡口在球心下方的深度
-_rx = R_LIP + LIP_CHAMFER
-_t = math.radians(TILT_MAX)
-NECK_R = _rx * math.cos(_t) - H_LIP * math.sin(_t)  # 倾斜 TILT_MAX 时下沿刚碰球颈
+
+
+def lip_geom(snap):
+    """卡口几何：返回 (卡口半径, 卡口顶深, 底面深, 倒角, 限位角°)。
+    限位角 = 卡口直壁下沿碰到球颈的角度（球颈粗细固定，卡口越紧角度越小）。"""
+    r_lip = RB - snap
+    h = math.sqrt(RC ** 2 - r_lip ** 2)       # 球面和卡口直壁相接处（球心下方）
+    hb = h + LIP_BAND
+    t = 0.0
+    while r_lip * math.cos(math.radians(t)) - hb * math.sin(math.radians(t)) > NECK_R:
+        t += 0.1
+    cr = 0.6                                  # 45° 外扩倒角（倒角面比直壁下沿更靠外，不影响限位）
+    return r_lip, h, hb + cr, cr, t
+
+
+R_LIP, H_LIP, Z_SOCK_BOT, LIP_CR, TILT_LIM = lip_geom(SNAP)
 PLATE_BOT = RO - 0.25                               # 托板底（与球窝顶融合）
 PLATE_TOP = PLATE_BOT + PLATE_T
 PCB_BOT = PLATE_TOP + BAT_H
@@ -119,23 +125,15 @@ def make_base():
     """桌面坐标：z=0 桌面。"""
     disc = cq.Workplane("XY").circle(BASE_D / 2).extrude(BASE_T).edges(">Z").fillet(1.5)
     boss = cq.Workplane("XY").circle(BOSS_D / 2).extrude(BOSS_TOP).edges(">Z").chamfer(1.0)
-    ribs = None
-    for k in range(4):
-        rib = (cq.Workplane("XZ").polyline([(BOSS_D / 2 - 1, BASE_T), (60, BASE_T),
-                                             (BOSS_D / 2 - 1, BOSS_TOP - 6)]).close()
-               .extrude(1.8, both=True).rotate((0, 0, 0), (0, 0, 1), 45 + 90 * k))
-        ribs = rib if ribs is None else ribs.union(rib)
-    b = disc.union(boss).union(ribs)
+    # 凸台根部一圈 45° 锥，代替原来的细三角肋
+    cone = (cq.Workplane("XY").workplane(offset=BASE_T - 0.01).circle(BOSS_D / 2 + 9)
+            .workplane(offset=9).circle(BOSS_D / 2 - 0.01).loft())
+    b = disc.union(boss).union(cone)
     # 压重物的圆坑（1 元硬币 Ø25，或螺母/钢珠/沙子）
     for k in range(4):
         a = math.radians(90 * k)
         b = b.cut(cq.Workplane("XY").workplane(offset=1.5).center(52 * math.cos(a), 52 * math.sin(a))
                   .circle(13.0).extrude(10))
-    # 胶带耳朵（贴纸胶带 / 美纹纸压在桌上）
-    for k in range(4):
-        ear = (cq.Workplane("XY").center(BASE_D / 2 + 4, 0).rect(22, 26).extrude(1.2)
-               .edges("|Z").fillet(4).rotate((0, 0, 0), (0, 0, 1), 45 + 90 * k))
-        b = b.union(ear)
     # 方孔 + 4 条挤压筋
     hs = POST_A + HOLE_CLR
     b = b.cut(cq.Workplane("XY").workplane(offset=HOLE_BOTTOM).rect(hs, hs).extrude(BOSS_TOP))
@@ -150,31 +148,23 @@ def make_base():
 
 
 # ---------------- 飞机转接件 ----------------
-def fin_profile(u_p):
-    """鳍的 (u, z) 轮廓：u 沿鳍方向，z 向上。顶边 45°（倒着打不要支撑）。"""
-    u0 = u_p - 0.3
-    z0 = PLATE_BOT + 0.2
-    # 45° 线与 r=FIN_R_OUT 圆的交点
-    u = u0
-    while math.hypot(u, z0 - (u - u0)) < FIN_R_OUT:
-        u += 0.05
-    pa = math.radians(-32)
-    p_out = (FIN_R_OUT * 0.985 * math.cos(pa), FIN_R_OUT * 0.985 * math.sin(pa))
-    p_in = (22.0 * math.cos(pa), 22.0 * math.sin(pa))
-    return [(5.5, z0), (u0, z0), (u, z0 - (u - u0)), p_out, p_in,
-            (16.0, -4.0), (11.0, 0.5), (8.8, SLOT_TOP + 0.6), (5.5, SLOT_TOP + 0.6)]
+def make_socket(snap, top):
+    """卡扣式球窝：球面腔 + 卡口直壁 + 外扩倒角 + 6 条弹性槽。top = 球窝柱顶面高度。"""
+    r_lip, h, zb, cr, _ = lip_geom(snap)
+    sock = cq.Workplane("XY").workplane(offset=-zb).circle(RO).extrude(top + zb)
+    sock = sock.cut(ball(RC))
+    sock = sock.cut(cq.Workplane("XY").workplane(offset=-zb - 1).circle(r_lip).extrude(zb + 1 - h + 0.3))
+    sock = sock.cut(cq.Workplane("XY").workplane(offset=-zb - 0.01).circle(r_lip + cr)
+                    .workplane(offset=cr + 0.01).circle(r_lip).loft())
+    for k in range(SLOTS):
+        sl = (cq.Workplane("XY").workplane(offset=-zb - 1).center(RO / 2 + 1, 0)
+              .rect(RO + 2, SLOT_W).extrude(SLOT_TOP + zb + 1)
+              .rotate((0, 0, 0), (0, 0, 1), 15 + 360 / SLOTS * k))
+        sock = sock.cut(sl)
+    return sock
 
 
-def make_fin(direction):
-    """direction: 'x'（机头，俯仰用）或 'y'（左侧，横滚用）"""
-    u_p = PLATE_HX if direction == "x" else PLATE_HY
-    f = cq.Workplane("XZ").polyline(fin_profile(u_p)).close().extrude(FIN_T / 2, both=True)
-    if direction == "y":
-        f = f.rotate((0, 0, 0), (0, 0, 1), 90)
-    return f
-
-
-def make_adapter():
+def make_adapter(snap=SNAP):
     # 托板（顶面贴电池）
     plate = (cq.Workplane("XY").workplane(offset=PLATE_BOT)
              .rect(2 * PLATE_HX, 2 * PLATE_HY).extrude(PLATE_T).edges("|Z").fillet(2.0))
@@ -182,27 +172,24 @@ def make_adapter():
     tz = PLATE_BOT + (PLATE_T - TUNNEL_H) / 2 + 0.3
     plate = plate.cut(cq.Workplane("XY").workplane(offset=tz).rect(TUNNEL_W, 2 * PLATE_HY + 2)
                       .extrude(TUNNEL_H))
-    # 球窝
-    sock = (cq.Workplane("XY").workplane(offset=-H_LIP).circle(RO)
-            .extrude(PLATE_BOT + 0.5 + H_LIP))
-    sock = sock.cut(ball(RC))
-    sock = sock.cut(cq.Workplane("XY").workplane(offset=-H_LIP - 1).circle(R_LIP + 0.01).extrude(2))
-    cham = (cq.Workplane("XY").workplane(offset=-H_LIP - 0.01).circle(R_LIP + LIP_CHAMFER)
-            .workplane(offset=LIP_CHAMFER + 0.01).circle(R_LIP - 0.01).loft())
-    sock = sock.cut(cham)
-    a = plate.union(sock).union(make_fin("x")).union(make_fin("y"))
-    # 弹性开槽（避开 0°/90° 的鳍）
-    for k in range(SLOTS):
-        ang = 15 + 360 / SLOTS * k
-        s = (cq.Workplane("XY").workplane(offset=-H_LIP - 1).center(RO / 2 + 1, 0)
-             .rect(RO + 2, SLOT_W).extrude(SLOT_TOP + H_LIP + 1)
-             .rotate((0, 0, 0), (0, 0, 1), ang))
-        a = a.cut(s)
+    a = plate.union(make_socket(snap, PLATE_BOT + 0.5))
     # 机头方向箭头（托板底面刻线，装的时候对准机头）
     arrow = (cq.Workplane("XY").workplane(offset=PLATE_BOT - 0.01)
              .polyline([(PLATE_HX - 1.0, 0), (PLATE_HX - 5.0, 3.0), (PLATE_HX - 5.0, -3.0)]).close()
              .extrude(0.6))
     return a.cut(arrow)
+
+
+def make_socket_test(snap, idx):
+    """紧度试件：一段球窝 + 顶上 Ø22 圆片（好捏），圆片边上 idx 个缺口 = 第几号。"""
+    disc_z = RC + 0.8
+    t = make_socket(snap, disc_z + 0.5)
+    t = t.cut(ball(RC))
+    disc = cq.Workplane("XY").workplane(offset=disc_z).circle(11).extrude(2.0)
+    for k in range(idx):
+        disc = disc.cut(cq.Workplane("XY").workplane(offset=disc_z - 1).center(11, 0).circle(1.3)
+                        .extrude(4).rotate((0, 0, 0), (0, 0, 1), 25 * k))
+    return t.union(disc)
 
 
 # ---------------- 飞机示意（只用于渲染和碰撞检查） ----------------
@@ -243,59 +230,6 @@ def make_props():
     return out
 
 
-# ---------------- 单轴卡扣 ----------------
-def rotY(shape, deg):
-    return shape.rotate((0, 0, 0), (0, 1, 0), deg)
-
-
-def make_lock(moving):
-    """moving：飞机侧所有会动的零件（不含鳍）。导槽墙 = 板条区 − 俯仰/横滚两种模式下的扫掠体。"""
-    hs = HEAD_A / 2 + CLIP_CLR
-    outer = octagon(HEAD_A + 2 * (CLIP_CLR + CLIP_WALL), HEAD_CH + 0.9, HEAD_BOT, HEAD_TOP - HEAD_BOT)
-    inner = octagon(HEAD_A + 2 * CLIP_CLR, HEAD_CH, HEAD_BOT - 1, HEAD_TOP - HEAD_BOT + 2)
-    clip = outer.cut(inner)
-    clip = clip.cut(cq.Workplane("XY").workplane(offset=HEAD_BOT - 1)
-                    .center(-hs - 5, 0).rect(10 + 2 * (hs - (HEAD_A / 2 - HEAD_CH) - 0.8), CLIP_OPEN)
-                    .extrude(20))
-    # 导槽两片墙
-    y0 = FIN_T / 2 + LOCK_GAP
-    x0 = hs
-    walls = None
-    for sgn in (1, -1):
-        w = (cq.Workplane("XY").workplane(offset=HEAD_BOT)
-             .center(x0 + (WALL_R + 1 - x0) / 2, sgn * (y0 + LOCK_WALL_T / 2))
-             .rect(WALL_R + 1 - x0, LOCK_WALL_T).extrude(40))
-        walls = w if walls is None else walls.union(w)
-    region = (cq.Workplane("XY").workplane(offset=HEAD_BOT - 1)
-              .center(x0 + (WALL_R + 1 - x0) / 2, 0).rect(WALL_R + 1 - x0 + 0.2, 2 * (y0 + LOCK_WALL_T) + 0.2).extrude(42))
-    # 外端只保留 r ≤ 33
-    walls = walls.intersect(cq.Workplane("XZ").circle(WALL_R).extrude(20, both=True))
-    walls = walls.cut(cq.Workplane("XY").workplane(offset=WALL_TOP).rect(100, 100).extrude(50))
-    # 扫掠切除（俯仰模式：鳍在 +x；横滚模式：整机转 -90°，左鳍转到 +x）
-    for rz in (0, -90):
-        mv = moving.rotate((0, 0, 0), (0, 0, 1), rz)
-        th = -32.0
-        while th <= 32.01:
-            piece = rotY(mv, th).intersect(region)
-            if piece.val().isValid() and piece.solids().size() > 0:
-                walls = walls.cut(piece)
-            th += 1.0
-    # 两片墙外端用一段圆弧连起来（鳍最远只到 r≈32），加强
-    arc = (cq.Workplane("XZ").circle(WALL_R).circle(FIN_R_OUT + 1.2).extrude(y0 + 0.2, both=True)
-           .intersect(walls.union(cq.Workplane("XY").box(200, 2 * y0 + 0.4, 200)))
-           .intersect(cq.Workplane("XY").workplane(offset=HEAD_BOT).center(50 + x0, 0)
-                      .rect(100, 2 * (y0 + 0.2)).extrude(WALL_TOP - HEAD_BOT)))
-    for rz in (0, -90):
-        mv = moving.rotate((0, 0, 0), (0, 0, 1), rz)
-        for th in range(-32, 33, 2):
-            arc = arc.cut(rotY(mv, th))
-    walls = walls.union(arc)
-    # 去掉孤立小块：只保留和卡箍相连的
-    lock = clip.union(walls)
-    solids = sorted(lock.solids().vals(), key=lambda s: -s.Volume())
-    return cq.Workplane("XY").add(solids[0])
-
-
 # ---------------- 主程序 ----------------
 def export(wp, name, rot=None, zmin_to0=True):
     s = wp
@@ -322,31 +256,28 @@ def export(wp, name, rot=None, zmin_to0=True):
 
 
 def build():
-    print(f"球 Ø{BALL_D}  球颈 Ø{2*NECK_R:.2f}  卡口深 {H_LIP:.2f}  托板 {PLATE_BOT:.2f}~{PLATE_TOP:.2f}"
-          f"  PCB 底 z={PCB_BOT:.2f}（球心上方）")
+    print(f"球 Ø{BALL_D}  球颈 Ø{2*NECK_R:.2f}  卡口 Ø{2*R_LIP:.2f}（深 {H_LIP:.2f}）  限位 ±{TILT_LIM:.1f}°"
+          f"  托板 {PLATE_BOT:.2f}~{PLATE_TOP:.2f}  PCB 底 z={PCB_BOT:.2f}（球心上方）")
     post = make_post()
     base = make_base()
     adapter = make_adapter()
     body, bat = make_drone_simple()
-    moving = adapter.union(body).union(bat)
-    # 扫掠时不考虑鳍：鳍在导槽缝里
-    moving_nofin = (adapter.cut(cq.Workplane("XY").box(80, FIN_T + 0.02, 80))
-                    .cut(cq.Workplane("XY").box(FIN_T + 0.02, 80, 80))
-                    .union(body).union(bat))
-    lock = make_lock(moving_nofin)
-    parts = dict(post=post, base=base, adapter=adapter, lock=lock, body=body, bat=bat)
+    parts = dict(post=post, base=base, adapter=adapter, body=body, bat=bat)
     # 打印朝向
     export(base, "base", zmin_to0=False)
     export(post, "post")
-    export(adapter, "adapter", rot=((1, 0, 0), 180))
-    export(lock, "lock")
+    for i, sn in enumerate(SNAP_TESTS, 1):
+        print(f"  {i} 号：卡口比球小 {sn} mm，限位 ±{lip_geom(sn)[4]:.1f}°")
+        export(make_socket_test(sn, i), f"socket_test_{i}", rot=((1, 0, 0), 180))
+        export(make_adapter(sn), f"adapter_{i}", rot=((1, 0, 0), 180))
+    for old in ("lock.stl", "adapter.stl", "assembly/asm_lock.stl"):
+        (OUT / old).unlink(missing_ok=True)
     # 装配体（桌面坐标）
     up = (0, 0, PIVOT_H)
     asm = {
         "asm_base": base,
         "asm_post": post.translate(up),
         "asm_adapter": adapter.translate(up),
-        "asm_lock": lock.translate(up),
         "asm_pcb": body.translate(up),
         "asm_battery": bat.translate(up),
     }
@@ -369,13 +300,13 @@ def hit(a, b):
 
 
 def check(p):
-    post, adapter, lock, body, bat = p["post"], p["adapter"], p["lock"], p["body"], p["bat"]
+    post, adapter, body, bat = p["post"], p["adapter"], p["body"], p["bat"]
     drone = adapter.union(body).union(bat)
     mounts = make_motor_mounts()
     fixed3 = post
     print("== 三轴模式：任意方向倾斜（每 15°）")
     worst_free = []
-    for tilt in (TILT_MAX - 1.0, TILT_MAX + 1.5):
+    for tilt in (TILT_LIM - 1.0, TILT_LIM + 1.5):
         n_hit = 0
         for az in range(0, 360, 15):
             ax = (math.cos(math.radians(az)), math.sin(math.radians(az)), 0)
@@ -383,18 +314,6 @@ def check(p):
                 n_hit += 1
         print(f"  倾斜 {tilt:.1f}°：{n_hit}/24 个方向碰到立柱")
         worst_free.append(n_hit)
-    print("== 单轴（俯仰）模式：卡扣导槽在机头方向")
-    fixed1 = post.union(lock)
-    for name, ax, ang in [("俯仰 +29", (0, 1, 0), 29), ("俯仰 -29", (0, 1, 0), -29),
-                          ("俯仰 +31.5", (0, 1, 0), 31.5), ("横滚 3°", (1, 0, 0), 3),
-                          ("横滚 -3°", (1, 0, 0), -3), ("偏航 3°", (0, 0, 1), 3)]:
-        print(f"  {name:10s} 碰撞={hit(drone.rotate((0, 0, 0), ax, ang), fixed1)}")
-    print("== 单轴（横滚）模式：卡扣转 90° 卡在左侧")
-    fixedR = post.union(lock.rotate((0, 0, 0), (0, 0, 1), 90))
-    for name, ax, ang in [("横滚 +29", (1, 0, 0), 29), ("横滚 -29", (1, 0, 0), -29),
-                          ("俯仰 3°", (0, 1, 0), 3), ("偏航 3°", (0, 0, 1), 3)]:
-        print(f"  {name:10s} 碰撞={hit(drone.rotate((0, 0, 0), ax, ang), fixedR)}")
-    # 鳍始终在导槽里（俯仰到底时也夹得住）
     print("== 最低点（倾斜到限位时离桌面）")
     low = 1e9
     allm = drone
@@ -402,7 +321,7 @@ def check(p):
         allm = allm.union(m)
     for az in range(0, 360, 45):
         ax = (math.cos(math.radians(az)), math.sin(math.radians(az)), 0)
-        bb = allm.rotate((0, 0, 0), ax, TILT_MAX).val().BoundingBox()
+        bb = allm.rotate((0, 0, 0), ax, TILT_LIM).val().BoundingBox()
         low = min(low, bb.zmin)
     print(f"  最低点 z={low + PIVOT_H:.1f} mm（底座最高 {BOSS_TOP} mm）")
 

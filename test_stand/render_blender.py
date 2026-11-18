@@ -101,25 +101,24 @@ OUTD.mkdir(parents=True, exist_ok=True)
 # 1) 装配图（三轴模式，无卡扣，飞机倾 18°）
 setup()
 objs = load()
-objs["lock"][0].hide_render = True
-tilt_drone(objs, Vector((0.6, 0.8, 0)).normalized(), 18)
+tilt_drone(objs, Vector((0.6, 0.8, 0)).normalized(), 15)
 camera((300, -330, 230), (0, 0, 75), lens=55)
 render(OUTD / "stand_hero.png")
 
-# 2) 单轴模式近景（卡扣装上，俯仰 22°，桨和电机座隐藏）
+# 2) 球铰近景（俯仰 15°，桨和电机座隐藏）
 setup()
 objs = load()
 for o, k in objs.values():
     if k in ("prop", "mount"):
         o.hide_render = True
-tilt_drone(objs, Vector((0, 1, 0)), 22)
+tilt_drone(objs, Vector((0, 1, 0)), 15)
 camera((95, -150, 150), (8, 0, 92), lens=70)
-render(OUTD / "stand_lock.png")
+render(OUTD / "stand_joint.png")
 
 # 3) 爆炸图
 setup()
 objs = load()
-lift = {"base": 0, "post": 25, "lock": 55, "adapter": 95, "pcb": 135, "battery": 135,
+lift = {"base": 0, "post": 25, "adapter": 80, "pcb": 135, "battery": 135,
         "mount": 135, "prop": 135}
 for o, k in objs.values():
     o.location.z += lift[k]

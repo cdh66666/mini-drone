@@ -15,7 +15,7 @@ ASM = Path(__file__).resolve().parent / "stl" / "assembly"
 PIVOT_H = 100.0
 CG_ABOVE = 18.0   # 估算：电机座 16 g、电机 10 g、电池 8 g、PCB 8 g… 见 README
 
-COL = {"base": "#2f6db5", "post": "#2f6db5", "adapter": "#f07a1a", "lock": "#8c4fcc",
+COL = {"base": "#2f6db5", "post": "#2f6db5", "adapter": "#f07a1a",
        "pcb": "#0c4a22", "battery": "#b9bcc4", "mount": "#9a9a96", "prop": "#333"}
 
 fig, ax = plt.subplots(figsize=(11, 8.2))
@@ -38,17 +38,20 @@ ax.annotate("转动中心（球心）\n离桌面 100 mm", (0, PIVOT_H), (-115, 9
 ax.plot(0, PIVOT_H + CG_ABOVE, "P", ms=12, color="#c00", zorder=10)
 ax.annotate(f"整机重心（估）\n球心上方约 {CG_ABOVE:.0f} mm", (0, PIVOT_H + CG_ABOVE), (-115, 150),
             fontsize=11, arrowprops=dict(arrowstyle="->", color="#c00"), color="#c00")
-# ±30° 限位
+# 限位（2 号紧度）
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import stand  # noqa: E402
+LIM = stand.TILT_LIM
 for sg in (1, -1):
-    a = np.radians(90 + sg * 30)
+    a = np.radians(90 + sg * LIM)
     ax.plot([0, 80 * np.cos(a)], [PIVOT_H, PIVOT_H + 80 * np.sin(a)], "--", color="red", lw=1)
-ax.add_patch(Arc((0, PIVOT_H), 90, 90, theta1=60, theta2=120, color="red", lw=1.2))
-ax.text(0, PIVOT_H + 50, "±30° 限位\n(球窝下沿碰球颈)", ha="center", fontsize=10, color="red")
-ax.annotate("单轴卡扣：导槽夹住\n托板下的导向鳍", (24, PIVOT_H - 10), (70, 55), fontsize=10,
-            arrowprops=dict(arrowstyle="->"), color="#6a2fa8")
+ax.add_patch(Arc((0, PIVOT_H), 90, 90, theta1=90 - LIM, theta2=90 + LIM, color="red", lw=1.2))
+ax.text(0, PIVOT_H + 50, f"±{LIM:.0f}° 限位（2 号紧度）\n(卡口下沿碰球颈)", ha="center", fontsize=10, color="red")
+ax.annotate("卡扣式球窝\n（6 条弹性指，按进去“咔”）", (7, PIVOT_H - 2), (40, 60), fontsize=10,
+            arrowprops=dict(arrowstyle="->"), color="#c25a00")
 ax.annotate("托板 + 绑带孔\n（皮筋/扎带穿过 PCB 两条槽）", (12, PIVOT_H + 9), (55, 165), fontsize=10,
             arrowprops=dict(arrowstyle="->"), color="#c25a00")
-ax.annotate("压重物的坑 ×4\n胶带耳 ×4", (52, 4), (85, 30), fontsize=10,
+ax.annotate("压重物的坑 ×4\n（胶带直接贴圆盘边）", (52, 4), (85, 30), fontsize=10,
             arrowprops=dict(arrowstyle="->"), color="#2f6db5")
 ax.axhline(0, color="k", lw=1.2)
 ax.set_aspect("equal")
