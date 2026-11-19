@@ -64,7 +64,7 @@ if not r.get("ok"):
     print("解锁失败:", r); sys.exit(1)
 threading.Thread(target=pump, daemon=True).start(); threading.Thread(target=watch, daemon=True).start()
 # 时间表（秒）：慢推 1.0 → 稳住 1.6 → 横滚 +0.7 → 回 0.7 → 俯仰 +0.7 → 回 0.7（后 4.8 秒进黑匣子）
-plan = [(1.0, "ramp"), (1.6, None), (0.7, ("r", AMP)), (0.7, ("r", 0)), (0.7, ("p", AMP)), (0.7, ("p", 0))]
+plan = [(1.0, "ramp"), (3.0, None), (1.0, ("r", AMP)), (1.0, ("r", 0)), (1.0, ("p", AMP)), (1.0, ("p", 0))]   # 11-19：平稳段拉长到 3 s（长黑匣子全程都有）
 t0 = time.time()
 try:
     for dur, act in plan:
