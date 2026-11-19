@@ -32,7 +32,7 @@ def metrics(r):
     on = np.where(thr >= 0.9 * top)[0]
     if not len(on): return None
     t_on = t[on[0]]
-    calm = (t > t_on + 0.8) & (np.arange(len(r)) < first) & (thr >= 0.9 * top)
+    idx = np.arange(len(r)); calm = (idx < first) & (idx >= first - 1000) & (thr >= 300)   # 阶跃前最后 1 秒（起步扶正那段不算）
     m = {"t": t}
     m["calm"] = calm
     m["roll_std"] = float(np.std(r["roll"][calm] / 10)) if calm.sum() > 50 else np.nan

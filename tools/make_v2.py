@@ -1252,7 +1252,7 @@ rep('''  if (vbatMv > 1000 && vbatMv < 3250) { disarm(F_BATT); return; }''', '''
   }''')
 # v18 允许解锁的倾角 20° → 40°（用户要求 ≥35°：在测试架上默认就是歪的）
 rep('''  if (fabsf(g_roll) > 20.0f || fabsf(g_pitch) > 20.0f) { why = "机身没放平（倾角需 <20°）"; return false; }''',
-    '''  if (fabsf(g_roll) > 40.0f || fabsf(g_pitch) > 40.0f) { why = "机身太歪（倾角需 <40°）"; return false; }''')
+    '''  if (fabsf(g_roll) > 45.0f || fabsf(g_pitch) > 45.0f) { why = "机身太歪（倾角需 <45°）"; return false; }''')
 # v18 解锁后只听一个遥控端：11-18 实测手机页（WebSocket，thr=0）和电脑（UDP，thr=730）同时发，
 # 油门每秒被拉回 0 十几次 → 软启动反复重来，飞不起来。规则：解锁后第一个发来有效杆量的通道独占，上锁后释放。
 # 1=UDP（电脑服务） 2=WebSocket（手机） 3=HTTP /api/stick。急停 X / stop 任何通道都有效。

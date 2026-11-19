@@ -2281,7 +2281,7 @@ static bool canArm(String& why) {
   if (!imuOK) { why = "IMU 未就绪"; return false; }
   if (g_mode == M_SPIN) { why = "起转测试中"; return false; }
   if (g_thr > 0) { why = "油门不在 0"; return false; }
-  if (fabsf(g_roll) > 40.0f || fabsf(g_pitch) > 40.0f) { why = "机身太歪（倾角需 <40°）"; return false; }
+  if (fabsf(g_roll) > 45.0f || fabsf(g_pitch) > 45.0f) { why = "机身太歪（倾角需 <45°）"; return false; }
   if (fabsf(g_gr) > 25.0f || fabsf(g_gp) > 25.0f) { why = "机身还在动"; return false; }
   if (vbatMv > 1000 && vbatMv < 3300) { why = "电池低于 3.3V"; return false; }
   return true;

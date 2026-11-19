@@ -49,7 +49,7 @@ def pump():   # UDP 50 Hz：U,seq,live,thr,r,p,y（和正式飞行同一条链�
                 if a[0] == "T" and len(a) > 6:
                     last_rx[0] = time.time()
                     tl = max(abs(float(a[5])), abs(float(a[6]))); mx[0] = max(mx[0], tl)
-                    if a[3] == "1" and tl > 30: print("!! 倾角 %.0f°，急停" % tl); alive[0] = False; stop(); return
+                    if a[3] == "1" and tl > 50: print("!! 倾角 %.0f°，急停" % tl); alive[0] = False; stop(); return
         except socket.timeout:
             pass
         except Exception:
