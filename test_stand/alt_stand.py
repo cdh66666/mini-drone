@@ -127,8 +127,10 @@ def make_tower(i):
     if i < 3:   # 顶上插接榫（前面开口，刻度窗不被挡）
         inner = TW - 2 * TWALL
         sp = (cq.Workplane("XY").workplane(offset=z1 - 0.01).rect(inner - 0.3, inner - 0.3).extrude(SPIGOT)
-              .cut(cq.Workplane("XY").workplane(offset=z1 - 1).rect(inner - 3.5, inner - 3.5).extrude(SPIGOT + 2))
-              .cut(cq.Workplane("XY").workplane(offset=z1 - 1).center(TW / 2, 0).rect(TW, WIN_W).extrude(SPIGOT + 2)))
+              # 下半截伸进塔里 5 mm、和塔壁熔成一体（不然榫是悬空的）
+              .union(cq.Workplane("XY").workplane(offset=z1 - 5).rect(inner + 0.4, inner + 0.4).extrude(5))
+              .cut(cq.Workplane("XY").workplane(offset=z1 - 6).rect(inner - 3.5, inner - 3.5).extrude(SPIGOT + 8))
+              .cut(cq.Workplane("XY").workplane(offset=z1 - 6).center(TW / 2, 0).rect(TW, WIN_W).extrude(SPIGOT + 8)))
         t = t.union(sp)
     else:
         t = t.union(_plate_with_hole(IB_TOP)).union(_plate_with_hole(H))
