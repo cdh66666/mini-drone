@@ -152,6 +152,7 @@ static void paramsSave() {
   prefs.putFloat("bR", g_bR); prefs.putFloat("bP", g_bP);
   prefs.putFloat("hov", g_hov); prefs.putFloat("yff", g_yff);
   prefs.putFloat("mg1", g_mg[0]); prefs.putFloat("mg2", g_mg[1]); prefs.putFloat("mg3", g_mg[2]); prefs.putFloat("mg4", g_mg[3]);
+  prefs.putFloat("yi", g_yi); prefs.putFloat("ya", g_ya);
   prefs.putFloat("kff", g_kff); prefs.putFloat("kdz", g_kdz); prefs.putFloat("tz", g_tz); prefs.putFloat("dzmax", g_dzmax);
   prefs.putInt("crate", g_crate); prefs.putInt("lp2", g_lp2); prefs.putInt("cap", g_cap); prefs.putFloat("dfc", g_dfc);
   prefs.end();
@@ -174,6 +175,7 @@ static void paramsLoad() {
     g_bR = prefs.getFloat("bR", 0.0f); g_bP = prefs.getFloat("bP", 0.0f);
     g_hov = prefs.getFloat("hov", g_hov); g_yff = prefs.getFloat("yff", g_yff);
     g_mg[0] = prefs.getFloat("mg1", 1); g_mg[1] = prefs.getFloat("mg2", 1); g_mg[2] = prefs.getFloat("mg3", 1); g_mg[3] = prefs.getFloat("mg4", 1);
+    g_yi = prefs.getFloat("yi", g_yi); g_ya = prefs.getFloat("ya", g_ya);
     g_kff = prefs.getFloat("kff", g_kff); g_kdz = prefs.getFloat("kdz", g_kdz); g_tz = prefs.getFloat("tz", g_tz); g_dzmax = prefs.getFloat("dzmax", g_dzmax);
     g_crate = prefs.getInt("crate", g_crate); g_lp2 = prefs.getInt("lp2", g_lp2); g_cap = prefs.getInt("cap", g_cap); g_dfc = prefs.getFloat("dfc", g_dfc);
     if (g_crate != 250 && g_crate != 1000) g_crate = 500;
@@ -369,7 +371,9 @@ static void mixOutput(int thr, float oR, float oP, float oY, int o[4]) {
   if (g_cap) {   // v18 Crazyflie 式：最高那路超出上限多少，四路一起减多少
     float hi = -1e9f;
     for (int i = 0; i < 4; i++) if (c[i] > hi) hi = c[i];
-    if ((float)thr + hi > (float)P.mthr) { thr = (int)((float)P.mthr - hi); if (thr < 0) thr = 0; }
+    // 11-19 改（底油门下限）：以前没有下限，纠正量特别大时（斜靠在架子限位上、撞了一下）底油门被一路减到 0，
+    // 三个电机停转、推力全没。现在底油门最多让出 35%，剩下放不下的纠正量交给后面的按比例缩小。
+    if ((float)thr + hi > (float)P.mthr) { const int lo = (int)((float)thr * 0.65f); thr = (int)((float)P.mthr - hi); if (thr < lo) thr = lo; }
   }
   const float roomUp   = (float)(P.mthr - thr);
   const float roomDown = (float)thr;
@@ -2136,13 +2140,13 @@ static void buildParamsJson(char* j, size_t n) {
            "\"pp\":%.3f,\"pi\":%.3f,\"pd\":%.4f,\"yp\":%.2f,"
            "\"idle\":%d,\"mthr\":%d,\"mang\":%.0f,\"trMax\":%.0f,"
            "\"trimR\":%.2f,\"trimP\":%.2f,"
-           "\"sgR\":%d,\"sgP\":%d,\"sgY\":%d,\"rot\":%.1f,\"bR\":%.1f,\"bP\":%.1f,\"hov\":%.1f,\"yff\":%.1f,\"crate\":%d,\"lp2\":%d,\"cap\":%d,\"dfc\":%.1f,\"kff\":%.2f,\"kdz\":%.0f,\"tz\":%.2f,\"dzmax\":%.0f,\"mg1\":%.3f,\"mg2\":%.3f,\"mg3\":%.3f,\"mg4\":%.3f}",
+           "\"sgR\":%d,\"sgP\":%d,\"sgY\":%d,\"rot\":%.1f,\"bR\":%.1f,\"bP\":%.1f,\"hov\":%.1f,\"yff\":%.1f,\"crate\":%d,\"lp2\":%d,\"cap\":%d,\"dfc\":%.1f,\"kff\":%.2f,\"kdz\":%.0f,\"tz\":%.2f,\"dzmax\":%.0f,\"mg1\":%.3f,\"mg2\":%.3f,\"mg3\":%.3f,\"mg4\":%.3f,\"yi\":%.2f,\"ya\":%.1f}",
            (double)P.angP,
            (double)P.rp, (double)P.ri, (double)P.rd,
            (double)P.pp, (double)P.pi, (double)P.pd,
            (double)P.yp, P.idle, P.mthr, (double)P.mang, (double)P.trMax,
            (double)P.trimR, (double)P.trimP,
-           P.sgR, P.sgP, P.sgY, (double)g_rot, (double)g_bR, (double)g_bP, (double)g_hov, (double)g_yff, g_crate, g_lp2, g_cap, (double)g_dfc, (double)g_kff, (double)g_kdz, (double)g_tz, (double)g_dzmax, (double)g_mg[0], (double)g_mg[1], (double)g_mg[2], (double)g_mg[3]);
+           P.sgR, P.sgP, P.sgY, (double)g_rot, (double)g_bR, (double)g_bP, (double)g_hov, (double)g_yff, g_crate, g_lp2, g_cap, (double)g_dfc, (double)g_kff, (double)g_kdz, (double)g_tz, (double)g_dzmax, (double)g_mg[0], (double)g_mg[1], (double)g_mg[2], (double)g_mg[3], (double)g_yi, (double)g_ya);
 }
 
 static void handleState() {

@@ -1134,7 +1134,9 @@ rep('''  const float roomUp   = (float)(P.mthr - thr);
   // 饱和缩放''', '''  if (g_cap) {   // v18 Crazyflie 式：最高那路超出上限多少，四路一起减多少
     float hi = -1e9f;
     for (int i = 0; i < 4; i++) if (c[i] > hi) hi = c[i];
-    if ((float)thr + hi > (float)P.mthr) { thr = (int)((float)P.mthr - hi); if (thr < 0) thr = 0; }
+    // 11-19 改（底油门下限）：以前没有下限，纠正量特别大时（斜靠在架子限位上、撞了一下）底油门被一路减到 0，
+    // 三个电机停转、推力全没。现在底油门最多让出 35%，剩下放不下的纠正量交给后面的按比例缩小。
+    if ((float)thr + hi > (float)P.mthr) { const int lo = (int)((float)thr * 0.65f); thr = (int)((float)P.mthr - hi); if (thr < lo) thr = lo; }
   }
   const float roomUp   = (float)(P.mthr - thr);
   const float roomDown = (float)thr;
@@ -1327,7 +1329,10 @@ _mg = ''.join('\n  else if (k == "mg%d") g_mg[%d] = (v < 0.7f ? 0.7f : (v > 1.4f
 rep('  else if (k == "kff") g_kff =', _mg.lstrip('\n') + '\n  else if (k == "kff") g_kff =')
 _mg2 = ''.join('\n      else if (!strcmp(k, "mg%d")) g_mg[%d] = (v < 0.7f ? 0.7f : (v > 1.4f ? 1.4f : v));' % (i + 1, i) for i in range(4))
 rep('      else if (!strcmp(k, "kff")) g_kff =', _mg2.lstrip('\n') + '\n      else if (!strcmp(k, "kff")) g_kff =')
-rep('\\"dzmax\\":%.0f}",', '\\"dzmax\\":%.0f,\\"mg1\\":%.3f,\\"mg2\\":%.3f,\\"mg3\\":%.3f,\\"mg4\\":%.3f}",')
-rep('(double)g_tz, (double)g_dzmax);', '(double)g_tz, (double)g_dzmax, (double)g_mg[0], (double)g_mg[1], (double)g_mg[2], (double)g_mg[3]);')
+rep('\\"dzmax\\":%.0f}",', '\\"dzmax\\":%.0f,\\"mg1\\":%.3f,\\"mg2\\":%.3f,\\"mg3\\":%.3f,\\"mg4\\":%.3f,\\"yi\\":%.2f,\\"ya\\":%.1f}",')
+rep('(double)g_tz, (double)g_dzmax);', '(double)g_tz, (double)g_dzmax, (double)g_mg[0], (double)g_mg[1], (double)g_mg[2], (double)g_mg[3], (double)g_yi, (double)g_ya);')
+# 11-19 偏航 I（yi）和机头锁定（ya）也存 NVS（以前只在内存里，断电回到 0.5 / 3.0）
+rep('  prefs.putFloat("kff", g_kff);', '  prefs.putFloat("yi", g_yi); prefs.putFloat("ya", g_ya);\n  prefs.putFloat("kff", g_kff);')
+rep('    g_kff = prefs.getFloat("kff", g_kff);', '    g_yi = prefs.getFloat("yi", g_yi); g_ya = prefs.getFloat("ya", g_ya);\n    g_kff = prefs.getFloat("kff", g_kff);')
 open(dst, 'w', encoding='utf-8').write(t)
 print('ok')

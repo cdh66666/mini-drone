@@ -607,7 +607,7 @@ class H(BaseHTTPRequestHandler):
                 try: j = json.load(open(fn, encoding="utf-8"))
                 except Exception: return self._json({"err": "tune.json 读不了"})
                 k, v = q.get("set", [""])[0], q.get("v", [""])[0]
-                if k in ("rp", "pp", "rd", "pd", "ri", "pi", "angP", "yff", "crate", "lp2", "dfc", "cap", "kff", "kdz", "tz", "dzmax") and v:
+                if k in ("rp", "pp", "rd", "pd", "ri", "pi", "angP", "yff", "crate", "lp2", "dfc", "cap", "kff", "kdz", "tz", "dzmax", "yp", "yi", "ya") and v:
                     try:
                         j[k] = float(v)
                         with open(fn + ".tmp", "w", encoding="utf-8") as f: json.dump(j, f, ensure_ascii=False)
