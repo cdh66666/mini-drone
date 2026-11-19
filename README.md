@@ -224,7 +224,7 @@ arduino-cli compile --fqbn esp32:esp32:esp32s3:CDCOnBoot=cdc,FlashSize=8M,PSRAM=
 | `cam_rec.py`、`tools/video_track.py` | 自动录像、录像追踪 |
 | `firmware/flight_vN/` | 各版固件源码（由 `tools/make_v2.py` 生成），`firmware/build/` 编译产物 |
 | `flights/` | 全部飞行记录 |
-| `test_stand/` | 3D 打印调参测试架、推力测试柱、定高测试架：CadQuery 参数化源文件、`stl/`、打印说明 |
+| `test_stand/` | 3D 打印调参测试架、推力刚性连接件（装在测试架立柱上测单电机推力）、推力测试柱、定高测试架：CadQuery 参数化源文件、`stl/`、打印说明 |
 | `docs/` | 原理图、PCB、图片 |
 | `pack/` | 完整资料包：KiCad 工程、Gerber、BOM、最早的固件和网页 |
 | `backup/` | 刷 v2 前的整片固件备份和原参数 |

@@ -59,7 +59,7 @@ def resolve(sub, name):
     return base
 
 
-def main():
+def main(FILES=FILES, PLACE=PLACE, EXTRUDER=EXTRUDER, PER_OBJ=PER_OBJ, PLATE_NAMES=PLATE_NAMES, OUT=OUT):
     tmp = Path(tempfile.mkdtemp())
     presets = {}
     for sub, name, fn in [("machine", "Bambu Lab A1 0.4 nozzle", "machine"),
@@ -120,7 +120,7 @@ def main():
     a = ms.index("<plate>")
     b = ms.index("</plate>") + len("</plate>")
     plates = ""
-    for p in (1, 2):
+    for p in sorted(PLATE_NAMES):
         plates += (f'<plate>\n    <metadata key="plater_id" value="{p}"/>\n    <metadata key="plater_name" value="{PLATE_NAMES[p]}"/>\n'
                    f'    <metadata key="locked" value="false"/>\n    <metadata key="filament_map_mode" value="Auto For Flush"/>'
                    + "".join(inst[o] for o in sorted(inst, key=int) if plate_of[o] == p) + "\n  </plate>\n  ")
