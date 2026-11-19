@@ -80,7 +80,19 @@ finally:
     try: get("/api/arm?on=0")
     except Exception: pass
     stop()
-time.sleep(0.4)
+time.sleep(0.9)
+# v20 长黑匣子（1 kHz 原始陀螺）：存 .bin，并算振动频谱
+try:
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import lb_read
+    c = http.client.HTTPConnection(HOST, timeout=15); c.request("GET", "/api/lb"); rb = c.getresponse()
+    lbb = rb.read() if rb.status == 200 else b""
+    if lbb:
+        open(os.path.join(OUT, time.strftime("%Y%m%d_%H%M%S") + "_" + TAG + ".lb"), "wb").write(lbb)
+        sp = lb_read.spectrum(lb_read.parse(lbb)[1])
+        if sp: print("vib peaks", sp["peaks"], "rms raw/filt", sp["rms_raw"], sp["rms_filt"])
+except Exception as e:
+    print("lb fail", e)
 txt = get("/api/bb", 8.0)
 fn = time.strftime("%Y%m%d_%H%M%S") + "_" + TAG + ".csv"
 open(os.path.join(OUT, fn), "w", encoding="utf-8").write(txt)

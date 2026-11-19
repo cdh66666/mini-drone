@@ -1334,5 +1334,114 @@ rep('(double)g_tz, (double)g_dzmax);', '(double)g_tz, (double)g_dzmax, (double)g
 # 11-19 偏航 I（yi）和机头锁定（ya）也存 NVS（以前只在内存里，断电回到 0.5 / 3.0）
 rep('  prefs.putFloat("kff", g_kff);', '  prefs.putFloat("yi", g_yi); prefs.putFloat("ya", g_ya);\n  prefs.putFloat("kff", g_kff);')
 rep('    g_kff = prefs.getFloat("kff", g_kff);', '    g_yi = prefs.getFloat("yi", g_yi); g_ya = prefs.getFloat("ya", g_ya);\n    g_kff = prefs.getFloat("kff", g_kff);')
+# ================= v20（11-19）：长黑匣子（PSRAM 1 kHz × 30 s）、陷波、积分放松、抗重力 =================
+rep('#define FW_VER "flight-v19"', '#define FW_VER "flight-v20"')
+rep('static float g_kff = 0.4f;', '''static float g_kff = 0.4f;
+static float g_irel = 40.0f;   // v20 积分放松阈值（°/s，设定角速度变化这么快时积分停；0 = 关）Betaflight iterm_relax
+static float g_ag = 2.0f;      // v20 抗重力：油门变化快时积分最多放大到 1+ag 倍（0 = 关）
+static float g_nf = 0.0f;      // v20 陀螺陷波中心频率 Hz（0 = 关），看振动频谱定
+static float g_nq = 3.0f;      // v20 陷波 Q（越大越窄）''')
+# 参数：存盘、读盘、两处设置、JSON
+rep('  prefs.putFloat("yi", g_yi);', '  prefs.putFloat("irel", g_irel); prefs.putFloat("ag", g_ag); prefs.putFloat("nf", g_nf); prefs.putFloat("nq", g_nq);\n  prefs.putFloat("yi", g_yi);')
+rep('    g_yi = prefs.getFloat("yi", g_yi);', '    g_irel = prefs.getFloat("irel", g_irel); g_ag = prefs.getFloat("ag", g_ag); g_nf = prefs.getFloat("nf", g_nf); g_nq = prefs.getFloat("nq", g_nq);\n    g_yi = prefs.getFloat("yi", g_yi);')
+_v20 = '''
+  else if (k == "irel") g_irel = (v < 0 ? 0 : (v > 500 ? 500 : v));
+  else if (k == "ag") g_ag = (v < 0 ? 0 : (v > 10 ? 10 : v));
+  else if (k == "nf") g_nf = (v < 0 ? 0 : (v > 450 ? 450 : v));
+  else if (k == "nq") g_nq = (v < 0.5f ? 0.5f : (v > 20 ? 20 : v));'''
+rep('  else if (k == "kff") g_kff =', _v20.lstrip('\n') + '\n  else if (k == "kff") g_kff =')
+rep('      else if (!strcmp(k, "kff")) g_kff =', '''      else if (!strcmp(k, "irel")) g_irel = (v < 0 ? 0 : (v > 500 ? 500 : v));
+      else if (!strcmp(k, "ag")) g_ag = (v < 0 ? 0 : (v > 10 ? 10 : v));
+      else if (!strcmp(k, "nf")) g_nf = (v < 0 ? 0 : (v > 450 ? 450 : v));
+      else if (!strcmp(k, "nq")) g_nq = (v < 0.5f ? 0.5f : (v > 20 ? 20 : v));
+      else if (!strcmp(k, "kff")) g_kff =''')
+rep('\\"yi\\":%.2f,\\"ya\\":%.1f}",', '\\"yi\\":%.2f,\\"ya\\":%.1f,\\"irel\\":%.0f,\\"ag\\":%.1f,\\"nf\\":%.0f,\\"nq\\":%.1f}",')
+rep('(double)g_yi, (double)g_ya);', '(double)g_yi, (double)g_ya, (double)g_irel, (double)g_ag, (double)g_nf, (double)g_nq);')
+# ① 陷波（RBJ biquad），在二阶低通之前作用于陀螺；长黑匣子记陷波前的原始陀螺
+rep('static Lpf2p lfG[3], lfA[3];', '''static Lpf2p lfG[3], lfA[3];
+struct Notch {   // v20 陷波（RBJ）
+  float b0 = 1, b1 = 0, b2 = 0, a1 = 0, a2 = 0, x1 = 0, x2 = 0, y1 = 0, y2 = 0;
+  void init(float fs, float f0, float q) {
+    const float w = 2.0f * PI_F * f0 / fs, al = sinf(w) / (2.0f * q), c = cosf(w), a0 = 1.0f + al;
+    b0 = 1.0f / a0; b1 = -2.0f * c / a0; b2 = 1.0f / a0; a1 = -2.0f * c / a0; a2 = (1.0f - al) / a0;
+  }
+  float apply(float x) { float y = b0 * x + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2; if (!isfinite(y)) y = x; x2 = x1; x1 = x; y2 = y1; y1 = y; return y; }
+};
+static Notch ntG[3]; static float ntF = -1, ntQ = -1;
+// v20 长黑匣子：PSRAM，每个传感器拍（1 kHz）一条，存最后 LBN 条
+struct __attribute__((packed)) LBRec { uint32_t us; int16_t gr[3], gf[3], ac[3], roll, pitch, spR, spP; uint16_t o[4]; int16_t thr; int8_t stR, stP; };
+static LBRec* lb = nullptr; static int LBN = 0;
+static volatile int lbHead = 0, lbCount = 0; static volatile bool lbOn = false; static volatile uint32_t lbSeq = 0;''')
+rep('''  g_imuOk = ok;
+  if (!ok) { i2cFail++; g_fault |= F_IMU; return; }''', '''  g_imuOk = ok;
+  if (!ok) { i2cFail++; g_fault |= F_IMU; return; }
+  float graw[3] = {gr[0], gr[1], gr[2]};
+  if (g_nf > 1.0f) {
+    if (g_nf != ntF || g_nq != ntQ) { for (int i = 0; i < 3; i++) ntG[i].init(1000.0f, g_nf, g_nq); ntF = g_nf; ntQ = g_nq; }
+    for (int i = 0; i < 3; i++) gr[i] = ntG[i].apply(gr[i]);
+  }''')
+rep('''  }
+}
+static void controlStep(float dt) {''', '''  }
+  if (lb && lbOn) {
+    LBRec& r = lb[lbHead];
+    r.us = (uint32_t)esp_timer_get_time();
+    for (int i = 0; i < 3; i++) { r.gr[i] = (int16_t)(graw[i] * 10); r.gf[i] = (int16_t)(fg[i] * 10); r.ac[i] = (int16_t)(a[i] * 1000); }
+    r.roll = (int16_t)(rollF * 10); r.pitch = (int16_t)(pitchF * 10); r.spR = (int16_t)dbg.spR; r.spP = (int16_t)dbg.spP;
+    for (int i = 0; i < 4; i++) r.o[i] = (uint16_t)g_out[i];
+    r.thr = (int16_t)dbg.thr; r.stR = (int8_t)(g_stkRoll * 100); r.stP = (int8_t)(g_stkPitch * 100);
+    lbHead = (lbHead + 1) % LBN; if (lbCount < LBN) lbCount++;
+  }
+}
+static void controlStep(float dt) {''')
+# 记录开关：解锁或推力/点动测试时记，停了 0.5 s 再停（保留最后 30 s）
+rep('''    sensorTick(dt);
+    const uint32_t div''', '''    sensorTick(dt);
+    {
+      static bool act0 = false; static uint32_t stopAt = 0;
+      const bool act = g_armed || g_mode == M_SPIN;
+      if (act && !act0) { lbHead = 0; lbCount = 0; lbOn = true; stopAt = 0; }
+      if (!act && act0) stopAt = millis() + 500;
+      if (stopAt && (int32_t)(millis() - stopAt) > 0) { lbOn = false; stopAt = 0; lbSeq++; }
+      act0 = act;
+    }
+    const uint32_t div''')
+rep('  bb = (BBRec*)malloc(sizeof(BBRec) * BBN);', '''  bb = (BBRec*)malloc(sizeof(BBRec) * BBN);
+  if (psramFound()) { LBN = 30000; lb = (LBRec*)ps_malloc(sizeof(LBRec) * LBN); }   // v20 30 s × 1 kHz ≈ 1.3 MB
+  if (!lb) { LBN = 2000; lb = (LBRec*)malloc(sizeof(LBRec) * LBN); }
+  Serial.printf("#LB,%d,%d\\n", LBN, (int)sizeof(LBRec));''')
+# 下载：/api/lb → 一行文字头 + 原始二进制记录（从旧到新）；正在记的时候不给
+rep('''static void handleBB() {''', '''static void handleLB() {
+  if (!lb || lbOn) { server.send(409, "text/plain", lbOn ? "recording" : "no lb"); return; }
+  const int n = lbCount, start = (lbHead - n + LBN) % LBN;
+  char head[160];
+  snprintf(head, sizeof(head), "#LB v20 seq=%lu n=%d rec=%d crate=%d nf=%.0f\\n", (unsigned long)lbSeq, n, (int)sizeof(LBRec), g_crate, (double)g_nf);
+  server.setContentLength(strlen(head) + (size_t)n * sizeof(LBRec));
+  server.send(200, "application/octet-stream", head);
+  int i = 0;
+  while (i < n) {
+    const int idx = (start + i) % LBN;
+    int k = 96; if (k > n - i) k = n - i; if (k > LBN - idx) k = LBN - idx;
+    server.sendContent((const char*)&lb[idx], (size_t)k * sizeof(LBRec));
+    i += k;
+  }
+}
+static void handleBB() {''')
+rep('  server.on("/api/bb", handleBB);', '  server.on("/api/bb", handleBB);\n  server.on("/api/lb", handleLB);')
+# ② 积分放松 + 抗重力：只缩放积分累加量
+rep('  float it, pm, df, out;', '  float it, pm, df, out;\n  float irel = 1.0f;   // v20 积分缩放（放松/抗重力）')
+rep('    it += ki * e * dt;', '    it += ki * irel * e * dt;')
+rep('  const float oR = pidR.step(spR, g_gr, dt, IMAX, g_dfc);', '''  {
+    static float lpR = 0, lpP = 0, thrL = 0;
+    const float a = dt / (1.0f / (2.0f * PI_F * 15.0f) + dt);
+    lpR += (spR - lpR) * a; lpP += (spP - lpP) * a;
+    float fR = 1.0f, fP = 1.0f;
+    if (g_irel > 1.0f) { fR = 1.0f - fabsf(spR - lpR) / g_irel; fP = 1.0f - fabsf(spP - lpP) / g_irel; if (fR < 0) fR = 0; if (fP < 0) fP = 0; }
+    thrL += ((float)thr - thrL) * (dt / (0.1f + dt));
+    float ag = 1.0f;
+    if (g_ag > 0.01f) { float x = fabsf((float)thr - thrL) / 80.0f; if (x > 1) x = 1; ag = 1.0f + g_ag * x; }
+    pidR.irel = fR * ag; pidP.irel = fP * ag;
+  }
+  const float oR = pidR.step(spR, g_gr, dt, IMAX, g_dfc);''')
 open(dst, 'w', encoding='utf-8').write(t)
 print('ok')
