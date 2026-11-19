@@ -41,7 +41,7 @@ def scene(only_post=False):
     bpy.ops.mesh.primitive_plane_add(size=2000, location=(0, 0, -6.05))
     bpy.context.object.is_shadow_catcher = True
     # 秤盘
-    bpy.ops.mesh.primitive_cylinder_add(radius=75, depth=6, location=(0, 0, -3))
+    bpy.ops.mesh.primitive_cube_add(size=1, location=(0, 0, -3), scale=(150, 150, 6))
     bpy.context.object.data.materials.append(mat("scale", COL["scale"], metal=0.6))
     for loc, e, s in [((200, -250, 350), 5e5, 250), ((-300, 120, 250), 2e5, 300)]:
         bpy.ops.object.light_add(type="AREA", location=loc)
@@ -74,4 +74,4 @@ OUTD.mkdir(parents=True, exist_ok=True)
 scene()
 shot((230, -260, 150), (0, 0, 42), 50, OUTD / "thrust_asm.png")
 scene(only_post=True)
-shot((95, -110, 120), (0, -4, 40), 60, OUTD / "thrust_post.png")
+shot((110, -130, 130), (0, -4, 40), 55, OUTD / "thrust_post.png")
