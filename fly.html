@@ -143,6 +143,13 @@ h2{margin:0;font-size:24px}
 .prow .ph{color:var(--dim);font-size:12px}
 @media (max-width:640px){.prow{grid-template-columns:72px 32px minmax(0,1fr) 32px}.prow .ph{grid-column:1/-1;margin-top:-4px}}
 .step[data-s="6"]{gap:10px}
+.camv{flex-direction:column;align-items:center;gap:4px}
+.camv img{cursor:crosshair}
+.camalt{position:absolute;top:8px;right:10px;background:#000a;color:#ffe066;font-weight:700;padding:2px 10px;border-radius:10px;font-size:16px}
+.camctl{display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:center;font-size:13px}
+.camctl button{padding:4px 10px;font-size:13px;border-radius:8px}.camctl button.on{background:var(--warn);color:#2a1d00}
+.camctl input{width:56px;font:inherit;padding:3px 6px;border-radius:8px;border:1px solid var(--line);background:#0f1318;color:var(--fg)}
+.camhint{font-size:12px;color:var(--warn)}
 .ftabs{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
 .ftabs button{padding:7px 0;font-size:15px}.ftabs button.cur{background:var(--acc);color:#fff}
 .fpanel{display:flex;flex-direction:column;gap:8px;min-height:0;overflow:auto}
@@ -366,6 +373,12 @@ nav button[data-s="4"],nav button[data-s="6"]{display:none}
         <div class="camv" id="camBox" hidden>
           <img id="camImg" alt="">
           <span class="rec" id="camRec" hidden>● 录像中</span>
+          <span class="camalt" id="camAlt">高度 --</span>
+          <div class="camctl">
+            <button id="cmPick">🎯 选颜色</button><button id="cmC0">标 0 cm</button>
+            <button id="cmC1">标</button><input id="cmCv" type="number" value="30" step="1"><span>cm</span>
+          </div>
+          <div class="camhint" id="camHint" hidden></div>
         </div>
         <div class="ibox">
           <div class="level sm"><div class="ring"></div><div class="bub" id="bub2"></div></div>
@@ -443,7 +456,7 @@ nav button[data-s="4"],nav button[data-s="6"]{display:none}
 <section class="step" data-s="6">
   <div class="row" style="gap:10px"><h2 style="font-size:20px">飞行曲线</h2><select id="fcSel"></select><button class="ghost" id="fcRef">↻</button><span class="hint" id="fcInfo"></span></div>
   <div class="fcm" id="fcM"></div>
-  <div class="fcp"><svg id="fcR" viewBox="0 0 1000 170"></svg><svg id="fcP" viewBox="0 0 1000 170"></svg><svg id="fcO" viewBox="0 0 1000 120"></svg></div>
+  <div class="fcp"><svg id="fcR" viewBox="0 0 1000 170"></svg><svg id="fcP" viewBox="0 0 1000 170"></svg><svg id="fcO" viewBox="0 0 1000 120"></svg><svg id="fcA" viewBox="0 0 1000 120" hidden></svg></div>
   <div class="hint" style="font-size:12px">灰 = 杆量给的目标角度（杆量 × 25°），彩色 = 实际。实际总比目标小 → 加「杆量前馈」或「角度 P」；冲过头来回晃 → 减；不打杆时也晃 → 角速度 P/D。</div>
 </section>
 
@@ -979,6 +992,25 @@ if(SRV){
   }).catch(()=>{});
   camPoll(); setInterval(camPoll,1000);
   $('#camImg').addEventListener('error',()=>{ camOn=false; });   // 断了下一秒重连
+  // 摄像头测高：先「选颜色」再点画面上的色块；「标 0 cm」「标 N cm」后点画面上对应刻度的高度
+  let cmMode='';
+  const cmSet=(m,hint)=>{ cmMode=m; ['#cmPick','#cmC0','#cmC1'].forEach(s=>$(s).classList.remove('on')); if(m) $({pick:'#cmPick',c0:'#cmC0',c1:'#cmC1'}[m]).classList.add('on'); $('#camHint').hidden=!m; $('#camHint').textContent=hint||''; };
+  $('#cmPick').addEventListener('click',()=>cmSet(cmMode==='pick'?'':'pick','在画面上点一下要追踪的色块（贴在滑块/飞机上）'));
+  $('#cmC0').addEventListener('click',()=>cmSet(cmMode==='c0'?'':'c0','在画面上点刻度 0 cm 的位置'));
+  $('#cmC1').addEventListener('click',()=>cmSet(cmMode==='c1'?'':'c1','在画面上点刻度 '+$('#cmCv').value+' cm 的位置'));
+  $('#camImg').addEventListener('click',async e=>{
+    if(!cmMode) return;
+    const im=$('#camImg'), r=im.getBoundingClientRect(), W=im.naturalWidth||1280, H=im.naturalHeight||720;
+    const x=Math.round((e.clientX-r.left)/r.width*W), y=Math.round((e.clientY-r.top)/r.height*H);
+    try{
+      if(cmMode==='pick'){ const j=await (await fetch('/api/cam/pick?x='+x+'&y='+y)).json(); toast(j.ok?'颜色记住了 ✓':'没取到画面',!j.ok); }
+      else { const cm=cmMode==='c0'?0:+$('#cmCv').value; await fetch('/api/cam/cal?i='+(cmMode==='c0'?0:1)+'&y='+y+'&cm='+cm); toast('刻度 '+cm+' cm 记住了 ✓'); }
+    }catch(err){ toast('没连上服务',1); }
+    cmSet('');
+  });
+  setInterval(()=>{ if(!camOn) return; fetch('/api/cam/track').then(r=>r.json()).then(j=>{
+    $('#camAlt').textContent=j.ok?(j.cm!=null?'高度 '+j.cm.toFixed(1)+' cm':'找到色块，还没标刻度'):(j.cfg&&j.cfg.hsv?'没找到色块':'先选颜色');
+  }).catch(()=>{}); },200);
 }
 liveReset();
 
@@ -1121,7 +1153,7 @@ setTimeout(ptabShow,800); setInterval(ptabShow,3000);
 const FC={names:[]};
 function fcParse(txt){
   const L=txt.trim().split(/\r?\n/), h=L[0].split(','), cols={}; h.forEach(k=>cols[k]=[]);
-  for(let i=1;i<L.length;i++){ const a=L[i].split(','); if(a.length<h.length) continue; h.forEach((k,j)=>cols[k].push(+a[j])); }
+  for(let i=1;i<L.length;i++){ const a=L[i].split(','); if(a.length<h.length) continue; h.forEach((k,j)=>cols[k].push(a[j]===''?NaN:+a[j])); }
   return cols;
 }
 function fcPlot(svg,t,lines,ylab,fixed){
@@ -1153,6 +1185,8 @@ async function fcLoad(n){
     fcPlot($('#fcR'),t,[{y:sr,c:'#8a97a6',n:'横滚目标',dash:1},{y:cl(ro),c:'#3cc2cc',n:'实际横滚'}],'横滚 °',rg);
     fcPlot($('#fcP'),t,[{y:sp,c:'#8a97a6',n:'俯仰目标',dash:1},{y:cl(pi),c:'#ef7a64',n:'实际俯仰'}],'俯仰 °',rg);
     fcPlot($('#fcO'),t,[{y:o,c:'#f0b429',n:'电机平均输出 %'},{y:cmd,c:'#3b9eff',n:'油门杆 %',dash:1},{y:vb.map(v=>(v-3)*100),c:'#8a97a6',n:'电池（3.0~4.0 V）'}],'%',[0,100]);
+    // 摄像头测高（有就画）
+    if(D2.alt_cm&&D2.alt_cm.some(v=>isFinite(v))){ $('#fcA').hidden=false; fcPlot($('#fcA'),t,[{y:sl('alt_cm'),c:'#ffe066',n:'摄像头测的高度 cm'}],'cm'); } else $('#fcA').hidden=true;
     // 指标
     const st=(a,m)=>{const x=a.filter((v,i)=>m[i]); if(!x.length) return 0; const mu=x.reduce((p,q)=>p+q,0)/x.length; return Math.sqrt(x.reduce((p,q)=>p+(q-mu)*(q-mu),0)/x.length);};
     const quiet=sr.map((v,i)=>Math.abs(v)<0.5&&Math.abs(sp[i])<0.5), stR=sr.map(v=>Math.abs(v)>1), stP=sp.map(v=>Math.abs(v)>1);
@@ -1162,6 +1196,7 @@ async function fcLoad(n){
       ['打杆跟到目标的','横滚 '+Math.round(100*ratio(sr,ro,stR))+'% · 俯仰 '+Math.round(100*ratio(sp,pi,stP))+'%'],
       ['反应延迟','横滚 '+fcLag(sr,ro)+' ms · 俯仰 '+fcLag(sp,pi)+' ms'],
       ['有电机顶满',Math.round(100*oMax)+'% 的时间'],['电池最低',Math.min(...vb).toFixed(2)+' V']];
+    if(D2.usb&&D2.usb.some(v=>v===1)) cells.push(['⚠ 插着 USB','数据线会拉着飞机，姿态/高度数据要打折']);
     if($('#fcInfo').dataset.crash){ cells.push(['结尾','翻/撞了（之后不计）']); delete $('#fcInfo').dataset.crash; }
     $('#fcM').innerHTML=cells.map(c=>'<div>'+c[0]+'<b>'+c[1]+'</b></div>').join('');
     $('#fcInfo').textContent=n.replace('.csv','');

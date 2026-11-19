@@ -58,6 +58,9 @@ class CamRec:
                     cap.release(); time.sleep(0.5)
                     cv2, cap = self._open(); dark_since = now
                     continue
+            # 测高：追踪选定颜色的色块，画在画面上（录像里也看得到）
+            try: self._track(cv2, f, now)
+            except Exception: pass
             # 存 JPEG：内存小，预录和截图都用它
             jpg = cv2.imencode(".jpg", f, [cv2.IMWRITE_JPEG_QUALITY, 80])[1].tobytes()
             with self.lock:
@@ -107,6 +110,84 @@ class CamRec:
         except Exception:
             pass
 
+    # ---------------- 摄像头测高（定高测试架用） ----------------
+    # cam_track.json：{"hsv":[h,s,v], "tol":[h,s,v], "p0":[y像素, cm], "p1":[y像素, cm]}
+    # 在调试台画面上点色块 = 选颜色；点两个刻度 = 标定。高度 = 色块中心 y 按两点线性换算成 cm。
+    TFILE = os.path.join(HERE, "cam_track.json")
+
+    def _tcfg(self):
+        if not hasattr(self, "_cfg"):
+            try:
+                import json
+                self._cfg = json.load(open(self.TFILE, encoding="utf-8"))
+            except Exception:
+                self._cfg = {}
+        return self._cfg
+
+    def _tsave(self):
+        import json
+        json.dump(self._cfg, open(self.TFILE, "w", encoding="utf-8"))
+
+    def _track(self, cv2, f, now):
+        import numpy as np
+        c = self._tcfg(); self.frame_hw = f.shape[:2]
+        if "hsv" not in c: self.trk = None; return
+        s = 2   # 缩小一半再找，省时间
+        sm = cv2.resize(f, (f.shape[1] // s, f.shape[0] // s))
+        hsv = cv2.cvtColor(sm, cv2.COLOR_BGR2HSV)
+        h, sa, v = c["hsv"]; th, ts, tv = c.get("tol", [10, 70, 70])
+        lo = np.array([max(0, h - th), max(0, sa - ts), max(0, v - tv)]); hi = np.array([min(179, h + th), min(255, sa + ts), min(255, v + tv)])
+        m = cv2.inRange(hsv, lo, hi)
+        if h - th < 0 or h + th > 179:   # 红色跨 0
+            lo2, hi2 = lo.copy(), hi.copy()
+            if h - th < 0: lo2[0], hi2[0] = 180 + h - th, 179
+            else: lo2[0], hi2[0] = 0, h + th - 180
+            m = cv2.bitwise_or(m, cv2.inRange(hsv, lo2, hi2))
+        m = cv2.morphologyEx(m, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+        n, lab, st, cen = cv2.connectedComponentsWithStats(m)
+        if n <= 1: self.trk = None; return
+        i = 1 + int(np.argmax(st[1:, cv2.CC_STAT_AREA]))
+        if st[i, cv2.CC_STAT_AREA] < 15: self.trk = None; return
+        cx, cy = cen[i][0] * s, cen[i][1] * s
+        cm = None
+        if "p0" in c and "p1" in c and c["p1"][0] != c["p0"][0]:
+            (y0, c0), (y1, c1) = c["p0"], c["p1"]
+            cm = c0 + (cy - y0) * (c1 - c0) / (y1 - y0)
+        self.trk = (now, cx, cy, cm)
+        cv2.circle(f, (int(cx), int(cy)), 14, (0, 255, 255), 2)
+        if cm is not None:
+            cv2.putText(f, "%.1f cm" % cm, (int(cx) + 18, int(cy) + 6), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 255), 2)
+        for k in ("p0", "p1"):
+            if k in c: cv2.line(f, (0, int(c[k][0])), (40, int(c[k][0])), (255, 0, 255), 2)
+
+    def track(self):
+        """最新的测高结果：{"ok", "cm", "cx", "cy", "age"}"""
+        t = getattr(self, "trk", None)
+        if not t: return {"ok": 0, "cfg": self._tcfg()}
+        return {"ok": 1, "cm": None if t[3] is None else round(t[3], 1), "cx": int(t[1]), "cy": int(t[2]),
+                "age": round(time.time() - t[0], 2), "cfg": self._tcfg()}
+
+    def track_cm(self):
+        t = getattr(self, "trk", None)
+        if not t or t[3] is None or time.time() - t[0] > 0.3: return ""
+        return "%.1f" % t[3]
+
+    def pick(self, x, y):
+        """点画面选颜色：取点击处 9x9 的 HSV 中位数"""
+        import cv2, numpy as np
+        with self.lock:
+            j = self.last[1] if self.last else None
+        if j is None: return {"ok": 0}
+        f = cv2.imdecode(np.frombuffer(j, np.uint8), cv2.IMREAD_COLOR)
+        x, y = int(x), int(y); p = f[max(0, y - 4):y + 5, max(0, x - 4):x + 5]
+        hsv = cv2.cvtColor(p, cv2.COLOR_BGR2HSV).reshape(-1, 3)
+        c = self._tcfg(); c["hsv"] = [int(v) for v in np.median(hsv, axis=0)]; c.setdefault("tol", [10, 70, 70]); self._tsave()
+        return {"ok": 1, "hsv": c["hsv"]}
+
+    def cal(self, i, y, cm):
+        c = self._tcfg(); c["p%d" % (1 if int(i) else 0)] = [float(y), float(cm)]; self._tsave()
+        return {"ok": 1, "cfg": c}
+
     def snapshot(self):
         with self.lock:
             return self.last[1] if self.last else None
@@ -122,6 +203,10 @@ class _Off:
     def stop(self, name): pass
     def snapshot(self): return None
     def info(self): return {"status": "关", "fps": 0, "dark": False, "rec": False}
+    def track(self): return {"ok": 0}
+    def track_cm(self): return ""
+    def pick(self, x, y): return {"ok": 0}
+    def cal(self, i, y, cm): return {"ok": 0}
 
 
 CAM = None

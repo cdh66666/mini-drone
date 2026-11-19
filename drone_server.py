@@ -226,9 +226,9 @@ class WifiLink:
                 if not getattr(self, "was_arm", False):
                     self.full = []; self.full_t0 = now
                     cam_rec.get().start(now)
-                self.full.append("%.3f,%s,%d,%.2f,%.2f,%s,%s,%s,%s,%s,%s,%s,%s,%s" % (
+                self.full.append("%.3f,%s,%d,%.2f,%.2f,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s" % (
                     now - self.full_t0, a[2], self.thr, self.r, self.p, a[5], a[6], a[19] if len(a) > 19 else "0", a[9],
-                    a[10], a[11], a[12], a[13], a[17]))
+                    a[10], a[11], a[12], a[13], a[17], cam_rec.get().track_cm(), "1" if a[18] == "0" else "0"))
             if getattr(self, "was_arm", False) and not arm:
                 threading.Thread(target=save_bb, args=(self.host, a[4]), daemon=True).start()
                 rows = getattr(self, "full", [])
@@ -238,7 +238,7 @@ class WifiLink:
                     try:
                         d = os.path.join(HERE, "flights", "full"); os.makedirs(d, exist_ok=True)
                         with open(os.path.join(d, fn), "w", encoding="utf-8") as f:
-                            NL = chr(10); f.write("t,vb_mv,thr_cmd,stick_r,stick_p,roll,pitch,yaw,gy,o1,o2,o3,o4,rssi" + NL + NL.join(rows) + NL)
+                            NL = chr(10); f.write("t,vb_mv,thr_cmd,stick_r,stick_p,roll,pitch,yaw,gy,o1,o2,o3,o4,rssi,alt_cm,usb" + NL + NL.join(rows) + NL)
                     except Exception:
                         pass
                 self.full = []
@@ -622,6 +622,12 @@ class H(BaseHTTPRequestHandler):
                                "time": time.strftime("%m-%d %H:%M", time.localtime(os.path.getmtime(fw))) if fw else None})
         if u.path == "/api/cam":       # 摄像头状态
             return self._json(cam_rec.get().info())
+        if u.path == "/api/cam/track":  # 摄像头测高：最新高度
+            return self._json(cam_rec.get().track())
+        if u.path == "/api/cam/pick":   # 点画面选要追踪的颜色（x,y 是原图像素）
+            return self._json(cam_rec.get().pick(float(q.get("x", ["0"])[0]), float(q.get("y", ["0"])[0])))
+        if u.path == "/api/cam/cal":    # 标定一个刻度点：i=0/1，y=原图像素，cm=这个点的高度
+            return self._json(cam_rec.get().cal(q.get("i", ["0"])[0], float(q.get("y", ["0"])[0]), float(q.get("cm", ["0"])[0])))
         if u.path == "/api/cam.mjpg":  # 摄像头实时画面（MJPEG，约 10 帧/秒），页面 <img> 直接用
             cam = cam_rec.get()
             if not cam_rec.enabled():
