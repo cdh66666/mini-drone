@@ -127,8 +127,10 @@ INV_ZB = INV_ZT + S.PCB_T                  # PCB 背面（朝上）= 插销底
 INV_HX = S.SLOT_Y1 + 1.3
 INV_Y0, INV_Y1 = -16.0, 4.5
 SLOT_C = (S.SLOT_Y0 + S.SLOT_Y1) / 2
-TAB_X0 = SLOT_C - S.TAB_T / 2
-TAB_X1 = TAB_X0 + S.TAB_T
+# 11-19 用户：硬片太窄、松。按 KiCad v5 原板长槽 2.0 × 6.0（两头 R1）重做：硬片 1.7 × 5.7，竖棱倒 0.5（让开圆头）
+INV_TAB_T, INV_TAB_HY = 1.7, 2.85
+TAB_X0 = SLOT_C - INV_TAB_T / 2
+TAB_X1 = TAB_X0 + INV_TAB_T
 Z_COL0 = 12.0                              # 柱子直段起点；下面 45° 收到套子上
 Z_LOFT0 = 3.0
 
@@ -155,9 +157,9 @@ def make_inv():
                .rect(INV_HX - 10.2, 8.0).extrude(INV_ZT - top + 0.01))
         tab = (cq.Workplane("XZ").polyline([(TAB_X0, INV_ZT - 0.01), (TAB_X1, INV_ZT - 0.01), (TAB_X1, z_top - 0.5),
                                             (TAB_X1 - 0.5, z_top), (TAB_X0 + 0.5, z_top), (TAB_X0, z_top - 0.5)])
-               .close().extrude(S.TAB_HX, both=True))
+               .close().extrude(INV_TAB_HY, both=True).edges("|Z").chamfer(0.5))
         tab = tab.cut(cq.Workplane("XY").workplane(offset=INV_ZB + S.WIN_BOT).center(SLOT_C, 0)
-                      .rect(S.TAB_T + 2, 2 * S.WIN_HX).extrude(S.WIN_TOP - S.WIN_BOT))
+                      .rect(INV_TAB_T + 2, 2 * S.WIN_HX).extrude(S.WIN_TOP - S.WIN_BOT))
         part = pad.union(tab)
         p = p.union(part if sx > 0 else part.mirror("YZ"))
     p = p.rotate((0, 0, 0), (0, 0, 1), 90)          # 转到机体坐标：长槽方向 → y，机头 → +x
@@ -221,11 +223,11 @@ def check(up, inv, fork):
     asm_up = {"base": base, "post": post, "rigid": up, "fork": fork,
               "key1": S.key_seated(1), "key2": S.key_seated(-1)} | {f"d_{k}": v for k, v in it}
     # 倒装：飞机绕 x 轴翻 180°，PCB 正面落到 INV_ZT
-    save = S.PCB_BOT, S.PLATE_TOP
-    S.PCB_BOT, S.PLATE_TOP = 0.0, -S.BAT_H
+    save = S.PCB_BOT, S.PLATE_TOP, S.SLOT_HX
+    S.PCB_BOT, S.PLATE_TOP, S.SLOT_HX = 0.0, -S.BAT_H, 3.0     # 槽长按 KiCad 原板 6.0
     flip = lambda w: w.rotate((0, 0, 0), (1, 0, 0), 180).translate((0, 0, INV_ZT + S.PCB_T))  # noqa: E731
     it = [(k, flip(v)) for k, v in drone_items()]
-    S.PCB_BOT, S.PLATE_TOP = save
+    S.PCB_BOT, S.PLATE_TOP, S.SLOT_HX = save
     fixed = inv.union(fork).union(key_inv(1)).union(key_inv(-1))
     report(fixed, it, post.union(base), "倒装")
     zl = min(v.val().BoundingBox().zmin for k, v in it)
@@ -269,15 +271,11 @@ def export(wp, name):
 
 
 def bambu():
-    """一盘（黑 PLA）：正装件 + 倒装件 + 楔形叉 ×2（多一把备用）→ 推力连接件_A1.3mf"""
+    """用户只用倒装：一盘黑 PLA，只放 rigid_inv（叉子已经打过）→ 推力连接件_A1.3mf"""
     import make_plates as MP
-    MP.main(FILES=["rigid_up.stl", "rigid_inv.stl", "rigid_fork.stl", "rigid_fork.stl"],
-            PLACE={"rigid_up.stl": [(1, 95, 128)], "rigid_inv.stl": [(1, 160, 128)],
-                   "rigid_fork.stl": [(1, 128, 75), (1, 128, 180)]},
-            EXTRUDER={}, PER_OBJ={n: {"wall_loops": "4", "sparse_infill_density": "40%"}
-                                  for n in ("rigid_up.stl", "rigid_inv.stl")}
-            | {"rigid_fork.stl": {"wall_loops": "4", "sparse_infill_density": "100%"}},
-            PLATE_NAMES={1: "推力连接件-PLA"}, OUT=HERE / "推力连接件_A1.3mf")
+    MP.main(FILES=["rigid_inv.stl"], PLACE={"rigid_inv.stl": [(1, 128, 128)]}, EXTRUDER={},
+            PER_OBJ={"rigid_inv.stl": {"wall_loops": "4", "sparse_infill_density": "40%"}},
+            PLATE_NAMES={1: "推力连接件-倒装-PLA"}, OUT=HERE / "推力连接件_A1.3mf")
 
 
 if __name__ == "__main__":
