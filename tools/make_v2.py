@@ -1611,5 +1611,25 @@ rep('''static void handleParams() {
 rep('''    char j[512];
     buildParamsJson(j, sizeof(j));''', '''    char j[900];
     buildParamsJson(j, sizeof(j));''')
+# ======== v24（11-20）：定高“点一下升/降一格，松开悬停” + 被撞偏后不再拼命拧回机头 ========
+rep('#define FW_VER "flight-v23"', '#define FW_VER "flight-v24"')
+rep("static float g_hovF = 0, g_hadj = 0, g_aki = 2.0f;", "static float g_hovF = 0, g_hadj = 0, g_aki = 2.0f, g_astH = 0.10f, g_astA = 1.0f; static volatile int g_astReq = 0; static int g_astDir = 0; static float g_astT0 = 0;")
+rep("""        float acmd = -g_akv * vzh; if (acmd > 2.0f) acmd = 2.0f; if (acmd < -2.0f) acmd = -2.0f;""",
+    """        float acmd = -g_akv * vzh; if (acmd > 2.0f) acmd = 2.0f; if (acmd < -2.0f) acmd = -2.0f;
+        // v24 点一下升/降一格：先按 A 加速 T 秒、再按 A 减速 T 秒，位移 = A·T²（默认 10 cm），之后自动悬停
+        if (g_astReq) { g_astDir = g_astReq > 0 ? 1 : -1; g_astReq = 0; g_astT0 = tOn; }
+        if (g_astDir) {
+          const float T = sqrtf((g_astH > 0.01f ? g_astH : 0.01f) / (g_astA > 0.2f ? g_astA : 0.2f)), el = tOn - g_astT0;
+          if (el < 2.0f * T) {
+            const float aref = (el < T ? 1.0f : -1.0f) * g_astDir * g_astA, vref = g_astDir * g_astA * (el < T ? el : 2.0f * T - el);
+            acmd = aref + g_akv * (vref - vzh); if (acmd > 3.0f) acmd = 3.0f; if (acmd < -3.0f) acmd = -3.0f;
+          } else g_astDir = 0;
+        }""")
+rep("""          if (fabsf(dstk) < 15.0f) g_hadj += -g_aki * aLp * dt;""", """          if (fabsf(dstk) < 15.0f && !g_astDir) g_hadj += -g_aki * aLp * dt;   // 升降一格的过程中不修正""")
+rep("""    if (thr < g_iThr || fabsf(g_stkYaw) > 0.01f || g_ya < 0.001f) yref = yawF;   // 地上 / 手动转向时跟着走""",
+    """    if (thr < g_iThr || fabsf(g_stkYaw) > 0.01f || g_ya < 0.001f || fabsf(g_gy) > 150.0f) yref = yawF;   // 地上 / 手动转向 / v24 被撞得猛转：就地认新机头，不拧回去""")
+rep('      else if (!strcmp(k, "aki")) g_aki = v;', '      else if (!strcmp(k, "aki")) g_aki = v;\n      else if (!strcmp(k, "astep")) g_astReq = (v > 0 ? 1 : -1);\n      else if (!strcmp(k, "astH")) g_astH = v / 100.0f;\n      else if (!strcmp(k, "astA")) g_astA = v;')
+rep('  else if (k == "aki") g_aki = v;', '  else if (k == "aki") g_aki = v;\n  else if (k == "astep") g_astReq = (v > 0 ? 1 : -1);\n  else if (k == "astH") g_astH = v / 100.0f;\n  else if (k == "astA") g_astA = v;')
+
 open(dst, 'w', encoding='utf-8').write(t)
 print('ok')

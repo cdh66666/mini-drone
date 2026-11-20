@@ -115,6 +115,13 @@ h2{margin:0;font-size:24px}
 .keys{display:grid;grid-template-columns:repeat(3,40px);gap:6px;justify-content:center}
 .key{height:40px;border-radius:8px;background:#26313c;display:grid;place-items:center;font-size:18px;border-bottom:3px solid #11161c}
 .key.on{background:var(--acc)}
+.sticks{display:flex;justify-content:space-around;gap:10px;background:var(--card);border-radius:12px;padding:8px}
+.sticks .sk{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:12px;color:var(--dim)}
+.jpad{width:110px;height:110px;border-radius:50%;position:relative;cursor:grab;touch-action:none;flex:none;border:1px solid #2a333e;
+  background:linear-gradient(90deg,transparent 49.5%,#2a333e 49.5%,#2a333e 50.5%,transparent 50.5%),linear-gradient(transparent 49.5%,#2a333e 49.5%,#2a333e 50.5%,transparent 50.5%),radial-gradient(circle,#26313c 0,#161c23 70%)}
+.jpad .kn{position:absolute;width:40%;height:40%;left:30%;top:30%;border-radius:50%;background:#33475e;border:2px solid #4a6a90;pointer-events:none;transition:transform .08s}
+.jpad.on .kn{border-color:var(--acc);background:#2f5f73;transition:none}
+.jpad .lb{position:absolute;left:0;right:0;text-align:center;font-size:10px;color:var(--dim);pointer-events:none}
 .checks{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .checks .tog{font-size:15px;padding:10px 12px}
 /* 手感 */
@@ -222,6 +229,7 @@ nav button[data-s="4"],nav button[data-s="6"]{display:none}
   .tpad{grid-template-columns:repeat(3,34px);gap:4px}
   .tpad button{height:30px}
   .khint{display:none}
+  .sticks{padding:4px}.jpad{width:84px;height:84px}
   .fly.fp-wide{grid-template-columns:64px minmax(0,1fr);grid-template-rows:minmax(0,1fr)}
   .fly.fp-wide>.mid{display:none}          /* 窄屏看参数/曲线时先收起仪表，空间给面板 */
   .fly.fp-wide>.thr{grid-row:1/2}
@@ -421,6 +429,10 @@ nav button[data-s="4"],nav button[data-s="6"]{display:none}
         <button class="ghost" id="btnLand">⬇ 降落<small class="dim" style="font-size:12px;margin-left:4px">空格</small></button>
       </div>
       <div class="amp"><span class="cap">方向幅度</span><input type="range" id="amp" min="0.04" max="0.6" step="0.02"><b id="ampTxt">--</b><button class="ghost" id="altBtn" title="定高：起飞 1 秒后接管，悬停推力自动辨识（随电量自动跟），松回原油门就刹住不升不降">定高 关</button><span class="dim" id="altTxt" style="font-size:12px"></span></div>
+      <div class="sticks">
+        <div class="sk"><div class="jpad" id="jL"><span class="lb" style="top:3px">升</span><span class="lb" style="bottom:3px">降</span><div class="kn"></div></div>左：升降 · 转向 <span>↑↓ ←→</span></div>
+        <div class="sk"><div class="jpad" id="jR"><span class="lb" style="top:3px">前</span><div class="kn"></div></div>右：前后左右 <span>WASD</span></div>
+      </div>
       <div class="ftabs" id="ftabs"><button data-t="ctl" class="cur">控制</button><button data-t="par">参数</button><button data-t="crv">曲线</button></div>
       <div class="fpanel" id="fpPar" hidden></div>
       <div class="fpanel" id="fpCrv" hidden></div>
@@ -441,7 +453,7 @@ nav button[data-s="4"],nav button[data-s="6"]{display:none}
       </div>
       </div>
       <div class="keys" style="display:none"><span class="key" id="kU"></span><span class="key" id="kL"></span><span class="key" id="kD"></span><span class="key" id="kR"></span></div>
-      <div class="dim khint" style="font-size:12px;text-align:center">⏎ 起飞 · 空格 慢降（再按急停）· Esc 急停 · WASD 方向 · ↑↓ 油门</div>
+      <div class="dim khint" style="font-size:12px;text-align:center">⏎ 起飞 · 空格 慢降（再按急停）· Esc 急停 · 摇杆都松手回中 · ↑↓ 升降 ←→ 转向 WASD 方向 · 左边滑条 = 基准油门 · 定高时 R/F 升降一格</div>
     </div>
   </div>
 </section>
@@ -1032,7 +1044,8 @@ if(SRV){
 liveReset();
 
 /* ---------------- 飞行 ---------------- */
-const st={armed:false,cmd:0,target:0,r:0,p:0,landing:false};
+const st={armed:false,cmd:0,target:0,out:0,r:0,p:0,landing:false};
+const J={lx:0,ly:0,rx:0,ry:0};   // 屏幕摇杆（鼠标拖，松手回中）
 let confirmed=false;
 $('#confirm').addEventListener('click',()=>{confirmed=!confirmed;$('#confirm').classList.toggle('on',confirmed);});
 const thr=$('#thr');
@@ -1077,7 +1090,9 @@ const keys={};
 setInterval(()=>{
   if(!st.armed||!S.on)return;
   // 记悬停油门：在空中、油门稳了 1 秒以上，取最近的平均（降落要按它来缓降）
-  if(!st.landing&&st.cmd>40){ st.hovN=(st.hovN||0)+1; if(st.hovN>10) st.hov=st.hov?st.hov+(st.cmd-st.hov)*0.05:st.cmd; } else if(!st.landing) st.hovN=0;
+  const kv=(keys.kUp?1:0)-(keys.kDn?1:0), sv=J.ly||kv;   // 升降杆：-1..1
+  if(!st.landing&&sv&&!ALT.on){ st.target=Math.max(0,Math.min(100,st.target+sv*0.5)); thr.value=Math.round(st.target); }   // 关定高时一直推，基准也慢慢跟（5%/秒）
+  if(!st.landing&&!sv&&st.cmd>40){ st.hovN=(st.hovN||0)+1; if(st.hovN>10) st.hov=st.hov?st.hov+(st.cmd-st.hov)*0.05:st.cmd; } else if(!st.landing) st.hovN=0;
   if(st.landing){
     // 11-18 改：0.5 秒收油门会在高处直接关电机砸下来（摔坏过一个电机）。
     // 现在：先降到悬停油门的 92%（慢慢往下沉，固件的“压上下弹”会限住下落速度），最多 3.5 秒；
@@ -1092,12 +1107,18 @@ setInterval(()=>{
   if(st.target>st.cmd) st.cmd=Math.min(st.target,st.cmd+5);   // 往上最快 50%/秒
   else st.cmd=st.target;                                        // 往下立刻
   const T=ampV();   // 杆量 × 最大倾角 25°：0.24 ≈ 6°（3.5° 推不动，8.7° 会冲出去撞）
-  st.r=(keys.ArrowRight?T:0)-(keys.ArrowLeft?T:0);
-  st.p=(keys.ArrowUp?T:0)-(keys.ArrowDown?T:0);   // sgP=-1 后：pitch+ = 1、2 号那边往下 = 往前飞
-  send('G,'+Math.round(st.cmd*10));
-  send('Q,'+st.r.toFixed(2)+','+st.p.toFixed(2)+',0');
+  st.r=J.rx?J.rx*T:(keys.ArrowRight?T:0)-(keys.ArrowLeft?T:0);
+  st.p=J.ry?J.ry*T:(keys.ArrowUp?T:0)-(keys.ArrowDown?T:0);   // sgP=-1 后：pitch+ = 1、2 号那边往下 = 往前飞
+  const yv=J.lx?J.lx*0.5:((keys.kRt?0.5:0)-(keys.kLt?0.5:0));
+  st.out=st.landing?st.cmd:Math.max(0,Math.min(100,st.cmd+sv*(ALT.on?12:15)));   // 松手 = 回到基准油门
+  send('G,'+Math.round(st.out*10));
+  send('Q,'+st.r.toFixed(2)+','+st.p.toFixed(2)+','+yv.toFixed(2));
 },100);
-setInterval(()=>{$('#thrPct').textContent=Math.round(st.armed?st.cmd:+thr.value)+'%';},100);
+setInterval(()=>{$('#thrPct').textContent=Math.round(st.armed?st.out:+thr.value)+'%';},100);
+setInterval(()=>{   // 用键盘时屏幕摇杆也跟着动，看得见杆量
+  const f=(id,x,y)=>{ const p=$('#'+id); if(p.classList.contains('on')) return; const R=p.getBoundingClientRect().width*0.3; p.querySelector('.kn').style.transform=(x||y)?'translate('+(x*R).toFixed(0)+'px,'+(-y*R).toFixed(0)+'px)':''; };
+  f('jL',(keys.kRt?1:0)-(keys.kLt?1:0),(keys.kUp?1:0)-(keys.kDn?1:0)); f('jR',(keys.ArrowRight?1:0)-(keys.ArrowLeft?1:0),(keys.ArrowUp?1:0)-(keys.ArrowDown?1:0));
+},50);
 
 /* ---------------- 急停 ---------------- */
 function estop(){
@@ -1121,15 +1142,30 @@ window.addEventListener('keydown',e=>{
   const k=WASD[e.code];
   if(k){e.preventDefault();keys[k]=true;$('#'+KEYMAP[k]).classList.add('on');return;}
   if(e.key==='Enter'){e.preventDefault();if(cur===3)takeoff();return;}
-  if(cur===3&&e.code==='ArrowUp'){e.preventDefault();thr.value=Math.min(100,+thr.value+2);st.target=+thr.value;st.landing=false;}
-  if(cur===3&&e.code==='ArrowDown'){e.preventDefault();thr.value=Math.max(0,+thr.value-2);st.target=+thr.value;}
+  if(cur===3&&(e.code==='KeyR'||e.code==='KeyF')&&ALT.on&&st.armed&&!st.landing&&!e.repeat){e.preventDefault();send('E,astep,'+(e.code==='KeyR'?1:-1));toast(e.code==='KeyR'?'⬆ 升一格':'⬇ 降一格');return;}   // v24 定高：R/F = 升/降一格
+  const AK={ArrowUp:'kUp',ArrowDown:'kDn',ArrowLeft:'kLt',ArrowRight:'kRt'}[e.code];   // 方向键 = 左摇杆，按住推、松开回中
+  if(cur===3&&AK){e.preventDefault();keys[AK]=true;if(AK==='kUp'||AK==='kDn')st.landing=false;return;}
 },true);
 window.addEventListener('keyup',e=>{
   if(e.target&&e.target.tagName==='INPUT'&&e.target.type!=='range') return;
   if(e.code==='Space'){e.preventDefault();return;}
   const k=WASD[e.code];
   if(k){keys[k]=false;$('#'+KEYMAP[k]).classList.remove('on');}
+  const AK={ArrowUp:'kUp',ArrowDown:'kDn',ArrowLeft:'kLt',ArrowRight:'kRt'}[e.code]; if(AK) keys[AK]=false;
 },true);
+window.addEventListener('blur',()=>{ for(const k in keys) keys[k]=false; });
+
+/* 屏幕摇杆：鼠标/触摸拖，松手回中。左：上下 = 升降（在基准油门上 ±15%，定高时 ±12%），左右 = 转机头；右：前后左右 */
+function jdz(v){ const a=Math.abs(v); return a<0.15?0:Math.sign(v)*(a-0.15)/0.85; }
+function jstick(id,fn){ const pad=$('#'+id), kn=pad.querySelector('.kn'); let act=null;
+  const upd=e=>{ const r=pad.getBoundingClientRect(), R=r.width*0.3; let x=(e.clientX-(r.left+r.width/2))/R, y=(e.clientY-(r.top+r.height/2))/R; const m=Math.hypot(x,y); if(m>1){x/=m;y/=m;}
+    kn.style.transform='translate('+(x*R).toFixed(0)+'px,'+(y*R).toFixed(0)+'px)'; fn(x,-y); };
+  const end=e=>{ if(e.pointerId!==act) return; act=null; pad.classList.remove('on'); kn.style.transform=''; fn(0,0); };
+  pad.addEventListener('pointerdown',e=>{ e.preventDefault(); if(act!==null) return; act=e.pointerId; try{pad.setPointerCapture(act);}catch(x){} pad.classList.add('on'); upd(e); });
+  pad.addEventListener('pointermove',e=>{ if(e.pointerId===act) upd(e); });
+  ['pointerup','pointercancel','lostpointercapture'].forEach(ev=>pad.addEventListener(ev,end)); }
+jstick('jL',(x,y)=>{ J.lx=jdz(x); J.ly=jdz(y); if(J.ly) st.landing=false; });
+jstick('jR',(x,y)=>{ const m=Math.hypot(x,y), k=m<0.1?0:(m-0.1)/0.9/m; J.rx=x*k; J.ry=y*k; });
 
 /* ---------------- 手感 ---------------- */
 /* 直接调参数：改 BASE → 写电脑 tune.json（下次连上也用它）→ 发给飞机并存盘 */

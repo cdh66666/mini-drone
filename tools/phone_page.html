@@ -20,9 +20,10 @@ button{font:inherit;color:inherit}
 @media (max-width:440px){.top{gap:7px;font-size:12px;padding:7px 10px}#conn{display:none}.tele{gap:8px}.mots{width:96px}}
 .card{background:var(--card);border:1px solid var(--line);border-radius:16px;min-height:0;min-width:0}
 /* 油门 */
-.thr{display:flex;flex-direction:column;align-items:center;padding:10px 8px;gap:6px;touch-action:none;position:relative}
+.thr{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:10px 8px;gap:8px;touch-action:none;position:relative}
 .thr.on{border-color:var(--ok)}
 .thr .cap{text-align:center}
+.thr .big{font-size:18px}
 .yawi{width:80%;height:6px;border-radius:3px;background:#0d1622;position:relative}
 .yawi i{position:absolute;top:-3px;left:50%;width:12px;height:12px;margin-left:-6px;border-radius:50%;background:#4a6a90}
 .cap{font-size:12px;color:var(--dim)}
@@ -57,6 +58,12 @@ button{font:inherit;color:inherit}
 .pad:before{content:"前";position:absolute;top:6px;left:0;right:0;text-align:center;font-size:11px;color:var(--dim)}
 .knob{position:absolute;width:40%;height:40%;left:30%;top:30%;border-radius:50%;background:#2a3d57;border:2px solid #4a6a90;pointer-events:none}
 .pad.on .knob{background:#2f5f73;border-color:var(--ok)}
+.pad{width:min(100%,200px,calc(100vh - 120px))}.lpad{width:min(100%,200px,calc(100vh - 225px))}
+.lpad:before{content:"升"}.lpad:after{content:"降";position:absolute;bottom:6px;left:0;right:0;text-align:center;font-size:11px;color:var(--dim)}
+.lpad{background:linear-gradient(90deg,transparent 49.5%,#1e2c40 49.5%,#1e2c40 50.5%,transparent 50.5%),linear-gradient(transparent 49.5%,#1e2c40 49.5%,#1e2c40 50.5%,transparent 50.5%),radial-gradient(circle,#15263b 0,#0d1622 70%)}
+.tbar{width:min(100%,200px);height:10px;border-radius:5px;background:#0d1622;border:1px solid var(--line);position:relative;flex:none}
+.tbar i{position:absolute;left:0;top:0;bottom:0;width:0;border-radius:5px;background:linear-gradient(90deg,#17675f,#2fd3c0)}
+.tbar b{position:absolute;top:-4px;bottom:-4px;width:2px;margin-left:-1px;left:0;background:#fff;opacity:.85}
 .yaw{display:flex;gap:10px}
 .yb{background:#16233a;border:1px solid var(--line);border-radius:12px;width:62px;height:38px;font-size:19px}
 .yb.on{background:#2f5f73;border-color:var(--ok)}
@@ -92,11 +99,11 @@ button{font:inherit;color:inherit}
   </div>
   <div class="main">
     <div class="card thr">
-      <div class="cap">左手：上下拖 = 油门 · 左右 = 转向</div>
-      <div class="yawi" id="yawi"><i></i></div>
-      <div class="track" id="track"><div class="fill" id="fill"></div><div class="tkm" id="tkm"><b>起飞</b></div><div class="tgt" id="tgt"></div></div>
+      <div class="cap">左手：上下 = 升降 · 左右 = 转向<br>松手回中</div>
+      <div class="pad lpad" id="lpad"><div class="knob" id="lknob"></div></div>
+      <div class="tbar"><i id="fill"></i><b id="tgt"></b></div>
       <div class="big" id="tpct">0%</div>
-      <div class="row"><button class="sb" id="tm">−</button><button class="sb" id="tp">+</button></div>
+      <div class="row"><button class="sb" id="tm">−</button><button class="lk" id="altB" style="flex:none;padding:0 10px;height:34px;line-height:34px">定高 关</button><button class="sb" id="tp">+</button></div>
     </div>
     <div class="card mid">
       <div class="st" id="st">连接中…</div>
@@ -115,9 +122,8 @@ button{font:inherit;color:inherit}
       </div>
     </div>
     <div class="card joy">
-      <div class="cap">方向（按机头）</div>
+      <div class="cap">右手：前后左右（按机头）<br>松手回中</div>
       <div class="pad" id="pad"><div class="knob" id="knob"></div></div>
-      <div class="yaw"><button class="yb" id="yl">⟲</button><button class="yb" id="yr">⟳</button></div>
     </div>
   </div>
 </div>
@@ -163,7 +169,7 @@ async function get(p){var ac=new AbortController(),to=setTimeout(function(){ac.a
 
 /* ---------- 状态 ---------- */
 var S={on:false,armed:false,f:0,vb:0,roll:0,pitch:0,yaw:0,o:[0,0,0,0],rssi:0,usb:false};
-var C={cmd:0,target:0,landing:false,r:0,p:0,y:0,mine:false,hov:0,hovN:0,lt:0,lf:0,touch:0};
+var C={cmd:0,target:0,out:0,v:0,landing:false,r:0,p:0,y:0,mine:false,hov:0,hovN:0,lt:0,lf:0,touch:0};
 var busy=false, tk=lsGet('tk3',52), lastRx=0, seq=0, ws=null, armT=0, trimDirty=false, P=null, vbF=0, pctF=-1;
 var FAULT={1:'IMU 异常',2:'信号断了',4:'倾斜太大',8:'电池没电'};
 
@@ -192,7 +198,10 @@ connect();
 function wsSend(s){if(ws&&ws.readyState===1&&ws.bufferedAmount<256){ws.send(s);return true;}return false;}
 
 setInterval(function(){
-  if(S.armed&&C.mine&&!C.landing&&C.cmd>40){C.hovN++;if(C.hovN>20)C.hov=C.hov?C.hov+(C.cmd-C.hov)*0.03:C.cmd;}else if(!C.landing)C.hovN=0;
+  var fly=S.armed&&C.mine&&!C.landing;
+  /* 左摇杆上下 = 在基准油门上加减（关定高 ±15%，开定高 ±12%）；关定高时一直推着，基准也慢慢跟（满杆 5%/秒），松手就停在新基准 */
+  if(fly&&C.v&&!ALT)C.target=Math.max(0,Math.min(100,C.target+C.v*0.25));
+  if(fly&&!C.v&&C.cmd>40){C.hovN++;if(C.hovN>20)C.hov=C.hov?C.hov+(C.cmd-C.hov)*0.03:C.cmd;}else if(!C.landing)C.hovN=0;
   if(C.landing){   // 11-18：以前线性收油门（25%/s），高处会直接掉下来摔坏电机 → 改成按悬停油门缓降
     var el=(performance.now()-C.lt)/1000,hv=C.hov||C.lf,desc=Math.round(hv*0.92),tg;
     if(!C.touch&&el>0.4&&S.az&&Math.abs(S.az-0.94)>0.35)C.touch=el;
@@ -200,7 +209,8 @@ setInterval(function(){
     else tg=Math.max(0,desc*(1-(el-(C.touch||3.5))/0.4));
     C.target=C.cmd=Math.max(0,tg);if(C.target<=0){C.landing=false;C.touch=0;disarm('落地 ✓');}}
   if(C.target>C.cmd)C.cmd=Math.min(C.target,C.cmd+2.5);else C.cmd=C.target;      // 往上最快 50%/秒，往下立刻
-  wsSend('U,'+(++seq)+','+(S.armed&&C.mine?1:0)+','+Math.round(C.cmd*10)+','+C.r.toFixed(2)+','+C.p.toFixed(2)+','+C.y.toFixed(2));
+  C.out=fly?Math.max(0,Math.min(100,C.cmd+C.v*(ALT?12:15))):C.cmd;
+  wsSend('U,'+(++seq)+','+(S.armed&&C.mine?1:0)+','+Math.round(C.out*10)+','+C.r.toFixed(2)+','+C.p.toFixed(2)+','+C.y.toFixed(2));
   render();
 },50);
 
@@ -233,10 +243,9 @@ function render(){
   txt($('#nR'),S.roll.toFixed(1));txt($('#nP'),S.pitch.toFixed(1));txt($('#nY'),Math.round(S.yaw)+'');
   $('#bub').style.transform='translate('+Math.max(-22,Math.min(22,S.roll*1.2)).toFixed(1)+'px,'+Math.max(-22,Math.min(22,-S.pitch*1.2)).toFixed(1)+'px)';
   for(var k=0;k<4;k++)$('#m'+k).style.width=Math.max(0,Math.min(100,S.o[k]/10))+'%';
-  var show=S.armed?C.cmd:0;
-  $('#fill').style.height=show+'%';$('#tgt').style.bottom='calc('+(S.armed?C.target:0)+'% - 1px)';
+  var show=S.armed?C.out:0;
+  $('#fill').style.width=show+'%';$('#tgt').style.left=(S.armed?C.target:tk)+'%';
   txt($('#tpct'),S.armed?Math.round(show)+'%':'起飞 '+tk+'%');
-  $('#tkm').style.bottom=tk+'%';
   txt($('#goT'),S.armed?'回到 '+tk+'%':'起飞');txt($('#goS'),S.armed?'点一下':'按住 0.6 秒 → '+tk+'%');
 }
 
@@ -271,45 +280,32 @@ $('#land').addEventListener('click',function(){if(S.armed&&C.mine&&!C.landing){C
 document.addEventListener('visibilitychange',function(){if(document.hidden&&S.armed)estop();});
 window.addEventListener('pagehide',function(){if(S.armed)estop();});
 
-/* ---------- 油门条 ---------- */
-/* 左手：整块油门卡片都能拖。上下 = 相对调油门（按下不跳，拖满卡片高度 = 60%），左右 = 转机头（松手回中）。
-   和右手摇杆是两个独立的触点，可以同时按 */
-(function(){var el=$('.thr'),act=null,y0=0,x0=0,t0=0,yi=$('#yawi i');
-  function end(e){if(e.pointerId!==act)return;act=null;el.classList.remove('on');C.y=0;yi.style.transform='';}
-  el.addEventListener('pointerdown',function(e){
-    if(e.target.closest&&e.target.closest('button'))return;   // −/+ 按钮照常
-    e.preventDefault();if(act!==null)return;
-    if(!S.armed||!C.mine){toast('先按“起飞”');return;}
-    act=e.pointerId;try{el.setPointerCapture(act);}catch(x){}el.classList.add('on');y0=e.clientY;x0=e.clientX;t0=C.target;});
-  el.addEventListener('pointermove',function(e){
-    if(e.pointerId!==act||!S.armed)return;
-    var h=el.getBoundingClientRect().height||300;
-    C.target=Math.max(0,Math.min(100,Math.round(t0+(y0-e.clientY)/h*60)));C.landing=false;
-    var dx=e.clientX-x0,k=Math.abs(dx)<10?0:Math.max(-1,Math.min(1,(dx-(dx>0?10:-10))/70));
-    C.y=k*0.5;yi.style.transform='translateX('+(k*40).toFixed(0)+'px)';});
-  ['pointerup','pointercancel','lostpointercapture'].forEach(function(ev){el.addEventListener(ev,end);});
-})();
+/* ---------- 左摇杆：上下 = 升降，左右 = 转机头；松手回中（回到基准油门 / 不转） ---------- */
+function dz(v){var a=Math.abs(v);return a<0.15?0:Math.sign(v)*(a-0.15)/0.85;}
+function stick(pad,kn,fn,ok){var act=null;
+  function upd(e){var r=pad.getBoundingClientRect(),R=r.width*0.3;
+    var x=(e.clientX-(r.left+r.width/2))/R,y=(e.clientY-(r.top+r.height/2))/R,m=Math.hypot(x,y);
+    if(m>1){x/=m;y/=m;}
+    kn.style.transform='translate('+(x*R).toFixed(0)+'px,'+(y*R).toFixed(0)+'px)';fn(x,-y);}
+  function end(e){if(e.pointerId!==act)return;act=null;pad.classList.remove('on');kn.style.transform='';fn(0,0);}
+  pad.addEventListener('pointerdown',function(e){e.preventDefault();if(act!==null)return;if(ok&&!ok())return;act=e.pointerId;try{pad.setPointerCapture(act);}catch(x){}pad.classList.add('on');upd(e);});
+  pad.addEventListener('pointermove',function(e){if(e.pointerId===act)upd(e);});
+  ['pointerup','pointercancel','lostpointercapture'].forEach(function(ev){pad.addEventListener(ev,end);});}
+stick($('#lpad'),$('#lknob'),function(x,y){C.y=dz(x)*0.5;C.v=dz(y);if(C.v)C.landing=false;},
+  function(){if(!S.armed||!C.mine){toast('先按“起飞”');return false;}return true;});
+/* v24 定高：开着时飞行中 −/+ = 降/升一格（10 cm），松开自动悬停；离地 1 秒多后飞机自己接管 */
+var ALT=lsGet('altOn',false);
+function altShow(){var b=$('#altB');b.textContent='定高 '+(ALT?'开':'关');b.classList.toggle('on',ALT);}
+$('#altB').onclick=async function(){ALT=!ALT;lsSet('altOn',ALT);altShow();var r=await get('/api/param?k=alt&v='+(ALT?1:0));toast(r&&r.ok?(ALT?'定高开：起飞后自动接管，−/+ 升降一格':'定高关'):'没写进去，再点一次',!(r&&r.ok));};
+altShow();
 function nudge(d){
+  if(ALT&&S.armed&&C.mine&&!C.landing){get('/api/param?k=astep&v='+(d>0?1:-1));toast(d>0?'⬆ 升一格':'⬇ 降一格');buzz(20);return;}
   if(!S.armed||!C.mine){tk=Math.max(30,Math.min(90,tk+d));lsSet('tk3',tk);showK();toast('起飞油门 '+tk+'%');return;}   // 没起飞：调起飞油门；飞行中：调当前油门
   C.landing=false;C.target=Math.max(0,Math.min(100,Math.round(C.target)+d));}
 $('#tm').onclick=function(){nudge(-1);};$('#tp').onclick=function(){nudge(1);};
 
-/* ---------- 摇杆：满杆 0.3 ≈ 倾 7.5°；松手回中 ---------- */
-(function(){var pad=$('#pad'),kn=$('#knob'),act=null,MAXT=0.4;
-  function upd(e){var r=pad.getBoundingClientRect(),R=r.width*0.3;
-    var x=(e.clientX-(r.left+r.width/2))/R,y=(e.clientY-(r.top+r.height/2))/R,m=Math.hypot(x,y);
-    if(m>1){x/=m;y/=m;m=1;}
-    kn.style.transform='translate('+(x*R).toFixed(0)+'px,'+(y*R).toFixed(0)+'px)';
-    var k=m<0.1?0:(m-0.1)/0.9/m;C.r=x*k*MAXT;C.p=-y*k*MAXT;}
-  function end(e){if(e.pointerId!==act)return;act=null;pad.classList.remove('on');kn.style.transform='';C.r=C.p=0;}
-  pad.addEventListener('pointerdown',function(e){e.preventDefault();if(act!==null)return;act=e.pointerId;try{pad.setPointerCapture(act);}catch(x){}pad.classList.add('on');upd(e);});
-  pad.addEventListener('pointermove',function(e){if(e.pointerId===act)upd(e);});
-  ['pointerup','pointercancel','lostpointercapture'].forEach(function(ev){pad.addEventListener(ev,end);});
-})();
-function yawBtn(id,v){var b=$(id),act=null;
-  b.addEventListener('pointerdown',function(e){e.preventDefault();act=e.pointerId;try{b.setPointerCapture(act);}catch(x){}b.classList.add('on');C.y=v;});
-  ['pointerup','pointercancel','lostpointercapture'].forEach(function(ev){b.addEventListener(ev,function(e){if(e.pointerId!==act)return;act=null;b.classList.remove('on');C.y=0;});});}
-yawBtn('#yl',-0.4);yawBtn('#yr',0.4);
+/* ---------- 右摇杆：满杆 0.4 ≈ 倾 10°；松手回中 ---------- */
+stick($('#pad'),$('#knob'),function(x,y){var m=Math.hypot(x,y),k=m<0.1?0:(m-0.1)/0.9/m;C.r=x*k*0.4;C.p=y*k*0.4;});
 
 /* ---------- 设置 ---------- */
 function showK(){txt($('#kv'),tk+'%');}
@@ -398,6 +394,6 @@ document.addEventListener('contextmenu',function(e){e.preventDefault();});
 /* 长按不选字、不弹复制菜单：按住类的控件直接吃掉 touchstart（它们只用 pointer 事件），全局禁止选区 */
 document.addEventListener('selectstart',function(e){if(!(e.target.closest&&e.target.closest('input,textarea')))e.preventDefault();});
 document.addEventListener('selectionchange',function(){var s=window.getSelection&&window.getSelection();if(s&&s.rangeCount&&!(document.activeElement&&/INPUT|TEXTAREA/.test(document.activeElement.tagName)))s.removeAllRanges();});
-['#stop','#go','.thr','#pad','#yl','#yr'].forEach(function(s){var el=$(s);if(el)el.addEventListener('touchstart',function(e){if(s==='.thr'&&e.target.closest&&e.target.closest('button'))return;if(e.cancelable)e.preventDefault();},{passive:false});});
+['#stop','#go','.thr','#pad','#lpad'].forEach(function(s){var el=$(s);if(el)el.addEventListener('touchstart',function(e){if(s==='.thr'&&e.target.closest&&e.target.closest('button'))return;if(e.cancelable)e.preventDefault();},{passive:false});});
 render();
 </script></body></html>
