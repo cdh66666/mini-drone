@@ -23,12 +23,14 @@ import stand as S  # noqa: E402  托架（holder）、插销、球窝尺寸共�
 # ---------------- 参数 ----------------
 ROD_D = 4.0             # 导杆直径（碳管 / 竹签，量了改这里）
 ROD_L = 400.0
-BUSH_CLR = 0.4          # 导向孔比导杆大（直径）：卡就加大
-PRESS = 0.05            # 球头、限位环套导杆的孔比导杆大（FDM 孔会小一点，正好压紧）
+BUSH_CLR = 1.0          # 导向孔比导杆大（直径）：卡就加大（11-20 用户实测 0.4 阻力大 → 1.0）
+PRESS = 0.05            # 限位环套导杆的孔比导杆大（FDM 孔会小一点，正好压紧）
+GLUE_CLR = 0.9          # 球头套导杆的孔比导杆大（直径）：用户用热熔胶固定，留胶层（11-20 改，原来压紧太紧）
 TW, TWALL = 20.0, 2.4   # 塔：方管外边长 / 壁厚
 H = 394.0               # 塔顶面高度
 IB_TOP = 329.0          # 塔里第二个导向孔（隔板）顶面
 PLATE = 4.0             # 导向孔隔板厚
+FUN = (TW - 2 * TWALL) / 2 - (ROD_D + BUSH_CLR) / 2   # 隔板下面 45° 漏斗高：隔板不悬空，免支撑（11-20）
 SEG = (4.0, 134.0, 264.0, H)   # 三节塔的分段高度（每节 130 mm，任何打印机都放得下）
 SPIGOT = 10.0           # 插接榫长度
 BASE_D, BASE_T = 200.0, 4.0
@@ -47,7 +49,7 @@ FLANGE_BOT = -(6.5 + SLEEVE_L + 1.5)          # 球头法兰底（相对球心�
 PIVOT_MIN = CAP_TAB_TIP - FLANGE_BOT          # 最低：法兰落在塔顶弹性片上
 RB_OF_PIVOT = BALL_ROD_TOP - ROD_L            # 导杆底 = 球心 + 这个
 RB_MIN = PIVOT_MIN + RB_OF_PIVOT
-RB_MAX = IB_TOP - PLATE - COLLAR_L - TAB_H    # 最高：限位环弹性片顶到第二个导向孔隔板底
+RB_MAX = IB_TOP - PLATE - FUN + (TW / 2 - TWALL - 6.4) - COLLAR_L - TAB_H   # 最高：限位环弹性片尖（r 6.4）顶到第二个导向孔下面的漏斗
 PIVOT_MAX = RB_MAX - RB_OF_PIVOT
 MARK0 = RB_MIN + COLLAR_L                     # 刻度 0 = 最低时限位环上沿
 
@@ -71,8 +73,13 @@ def make_ball():
     flange = cq.Workplane("XY").workplane(offset=FLANGE_BOT).circle(FLANGE_OD / 2).extrude(1.5)
     flange = flange.edges("<Z").chamfer(0.4)
     p = b.union(neck).union(sleeve).union(flange)
-    return p.cut(cq.Workplane("XY").workplane(offset=FLANGE_BOT - 1).circle((ROD_D + PRESS) / 2)
-                 .extrude(BALL_ROD_TOP - FLANGE_BOT + 1))
+    hole = (cq.Workplane("XY").workplane(offset=FLANGE_BOT - 1).circle((ROD_D + GLUE_CLR) / 2)
+            .extrude(BALL_ROD_TOP - FLANGE_BOT + 1))
+    lead = (cq.Workplane("XY").workplane(offset=FLANGE_BOT - 0.01).circle((ROD_D + GLUE_CLR) / 2 + 0.6)
+            .workplane(offset=0.61).circle((ROD_D + GLUE_CLR) / 2).loft())   # 下口倒角，好插好灌胶
+    tip = (cq.Workplane("XY").workplane(offset=BALL_ROD_TOP - 0.01).circle((ROD_D + GLUE_CLR) / 2)
+           .workplane(offset=(ROD_D + GLUE_CLR) / 2 - 0.3).circle(0.3).loft())   # 孔顶 45° 尖顶，不搭桥
+    return p.cut(hole).cut(lead).cut(tip)
 
 
 def make_collar():
@@ -97,9 +104,12 @@ def _tube(z0, z1):
 
 def _plate_with_hole(z_top):
     inner = TW - 2 * TWALL
-    p = cq.Workplane("XY").workplane(offset=z_top - PLATE).rect(inner + 0.2, inner + 0.2).extrude(PLATE)
-    return p.cut(cq.Workplane("XY").workplane(offset=z_top - PLATE - 1).circle((ROD_D + BUSH_CLR) / 2)
-                 .extrude(PLATE + 2))
+    p = cq.Workplane("XY").workplane(offset=z_top - PLATE - FUN).rect(inner + 0.2, inner + 0.2).extrude(PLATE + FUN)
+    hr = (ROD_D + BUSH_CLR) / 2
+    p = p.cut(cq.Workplane("XY").workplane(offset=z_top - PLATE - FUN - 0.01).rect(inner + 0.2, inner + 0.2)
+              .workplane(offset=FUN + 0.01).rect(2 * hr, 2 * hr).loft())   # 下面 45° 方漏斗：自支撑，导杆也好穿
+    return p.cut(cq.Workplane("XY").workplane(offset=z_top - PLATE - FUN - 1).circle((ROD_D + BUSH_CLR) / 2)
+                 .extrude(PLATE + FUN + 2))
 
 
 def _scale(z0, z1):
@@ -143,7 +153,7 @@ def make_tower(i):
             t = t.union(tab)
     # 刻度观察窗（+x 面）
     w0 = max(z0 + 3, MARK0 - 6) if i == 1 else z0 + 3
-    w1 = min(z1 - 3, IB_TOP - PLATE - 2)
+    w1 = min(z1 - 3, IB_TOP - PLATE - FUN - 1)
     if w1 > w0:
         t = t.cut(cq.Workplane("XY").workplane(offset=w0).center(TW / 2, 0).rect(TWALL * 3, WIN_W).extrude(w1 - w0))
     sc = _scale(z0, z1)
@@ -266,7 +276,19 @@ def check(parts, meshes):
     print(f"  装配体：球心在 {mid:.0f} mm（刻度读数约 {(mid + RB_OF_PIVOT + COLLAR_L - MARK0) / 10:.1f} cm）")
 
 
+def bambu_ball():
+    """11-20 重打：球头（孔改大、热熔胶固定）+ 第 3 节塔（导向孔改大）→ 球头和第3节塔_A1.3mf"""
+    import make_plates as MP
+    MP.main(FILES=["alt_ball.stl", "alt_tower_3.stl"],
+            PLACE={"alt_ball.stl": [(1, 150, 128)], "alt_tower_3.stl": [(1, 110, 128)]}, EXTRUDER={},
+            PER_OBJ={"alt_ball.stl": {"wall_loops": "3", "sparse_infill_density": "20%"},
+                     "alt_tower_3.stl": {"wall_loops": "3"}},
+            PLATE_NAMES={1: "定高-重打-PLA"}, OUT=HERE / "球头和第3节塔_A1.3mf")
+
+
 if __name__ == "__main__":
     parts, meshes = build()
     if "--check" in sys.argv:
         check(parts, meshes)
+    if "--ball3mf" in sys.argv:
+        bambu_ball()
