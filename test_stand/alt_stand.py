@@ -24,8 +24,7 @@ import stand as S  # noqa: E402  托架（holder）、插销、球窝尺寸共�
 ROD_D = 4.0             # 导杆直径（碳管 / 竹签，量了改这里）
 ROD_L = 400.0
 BUSH_CLR = 1.0          # 导向孔比导杆大（直径）：卡就加大（11-20 用户实测 0.4 阻力大 → 1.0）
-PRESS = 0.05            # 限位环套导杆的孔比导杆大（FDM 孔会小一点，正好压紧）
-GLUE_CLR = 0.9          # 球头套导杆的孔比导杆大（直径）：用户用热熔胶固定，留胶层（11-20 改，原来压紧太紧）
+GLUE_CLR = 0.9          # 球头、限位环套导杆的孔比导杆大（直径）：热熔胶固定，留胶层（11-20 改，原来压紧太紧）
 TW, TWALL = 20.0, 2.4   # 塔：方管外边长 / 壁厚
 H = 394.0               # 塔顶面高度
 IB_TOP = 329.0          # 塔里第二个导向孔（隔板）顶面
@@ -36,20 +35,20 @@ SPIGOT = 10.0           # 插接榫长度
 BASE_D, BASE_T = 200.0, 4.0
 COIN_D, COIN_R = 26.0, 72.0
 WIN_W = 6.0             # 刻度观察窗宽
+ENGRAVE = 0.6           # 刻度、数字刻进塔壁的深度
 
 NECK_R = 4.5            # 球头颈：配 2 号托架 → 限位约 ±15°（1 号约 ±18°，3 号约 ±12°）
 SLEEVE_OD, SLEEVE_L, FLANGE_OD = 8.0, 14.0, 12.0
 BALL_ROD_TOP = -8.0     # 导杆顶在球心下方 8 mm
 COLLAR_OD, COLLAR_L = 10.0, 14.0
-TAB_T, TAB_W, TAB_H = 0.9, 3.0, 2.5   # 弹性片（软限位）
 
 # ---------------- 推导：行程 ----------------
-CAP_TAB_TIP = H + 3.0                         # 塔顶弹性片尖
+CAP_TAB_TIP = H                               # 11-20 去掉塔顶弹性片（易断）：球头法兰直接落在塔顶
 FLANGE_BOT = -(6.5 + SLEEVE_L + 1.5)          # 球头法兰底（相对球心）
-PIVOT_MIN = CAP_TAB_TIP - FLANGE_BOT          # 最低：法兰落在塔顶弹性片上
+PIVOT_MIN = CAP_TAB_TIP - FLANGE_BOT          # 最低：法兰落在塔顶
 RB_OF_PIVOT = BALL_ROD_TOP - ROD_L            # 导杆底 = 球心 + 这个
 RB_MIN = PIVOT_MIN + RB_OF_PIVOT
-RB_MAX = IB_TOP - PLATE - FUN + (TW / 2 - TWALL - 6.4) - COLLAR_L - TAB_H   # 最高：限位环弹性片尖（r 6.4）顶到第二个导向孔下面的漏斗
+RB_MAX = IB_TOP - PLATE - FUN + (TW / 2 - TWALL - COLLAR_OD / 2) - COLLAR_L   # 最高：限位环 45° 锥顶贴进第二个导向孔下面的 45° 漏斗
 PIVOT_MAX = RB_MAX - RB_OF_PIVOT
 MARK0 = RB_MIN + COLLAR_L                     # 刻度 0 = 最低时限位环上沿
 
@@ -65,7 +64,7 @@ def lim_angle(snap, neck):
 
 # ---------------- 零件 ----------------
 def make_ball():
-    """杆顶球头（球心为原点）：Ø12 球 + 颈 + 套导杆的套筒 + 底部法兰（落在塔顶弹性片上）。竖着打，球朝上。"""
+    """杆顶球头（球心为原点）：Ø12 球 + 颈 + 套导杆的套筒 + 底部法兰（落在塔顶）。竖着打，球朝上。"""
     b = S.ball(S.RB)
     neck = cq.Workplane("XY").workplane(offset=-6.6).circle(NECK_R).extrude(6.6 - 1)
     sleeve = (cq.Workplane("XY").workplane(offset=FLANGE_BOT + 1.5).circle(SLEEVE_OD / 2)
@@ -83,16 +82,16 @@ def make_ball():
 
 
 def make_collar():
-    """杆底限位环（底面 z=0 = 导杆底）：套在导杆最下端，顶上 4 片斜着往外的弹性片 = 上端软限位，
+    """杆底限位环（底面 z=0 = 导杆底）：套在导杆最下端，顶上 45° 锥顶进第二个导向孔下的漏斗 = 上端限位，
     防止飞机把导杆拔出塔。用醒目颜色打，从刻度窗里看它的上沿读高度。"""
     c = cq.Workplane("XY").circle(COLLAR_OD / 2).extrude(COLLAR_L)
-    c = c.cut(cq.Workplane("XY").workplane(offset=1.0).circle((ROD_D + PRESS) / 2).extrude(COLLAR_L))
-    for k in range(4):
-        tab = (cq.Workplane("XZ").polyline([(3.0, COLLAR_L - 0.01), (3.0 + TAB_T, COLLAR_L - 0.01),
-                                             (3.0 + TAB_T + TAB_H, COLLAR_L + TAB_H),
-                                             (3.0 + TAB_H, COLLAR_L + TAB_H)]).close()
-               .extrude(TAB_W / 2, both=True).rotate((0, 0, 0), (0, 0, 1), 45 + 90 * k))
-        c = c.union(tab)
+    hr = (ROD_D + GLUE_CLR) / 2
+    cone = (cq.Workplane("XY").workplane(offset=COLLAR_L - 0.01).circle(COLLAR_OD / 2)
+            .workplane(offset=COLLAR_OD / 2 - hr - 1.2).circle(hr + 1.2).loft())   # 45° 锥顶：顶进漏斗，自动对中、不会断
+    c = c.union(cone)
+    c = c.cut(cq.Workplane("XY").workplane(offset=1.0).circle(hr).extrude(COLLAR_L + 5))   # 热熔胶固定
+    c = c.cut(cq.Workplane("XY").workplane(offset=COLLAR_L + COLLAR_OD / 2 - hr - 1.2 - 0.6).circle(hr)
+              .workplane(offset=0.61).circle(hr + 0.6).loft())
     return c
 
 
@@ -113,44 +112,44 @@ def _plate_with_hole(z_top):
 
 
 def _scale(z0, z1):
-    """+x 面的 cm 刻度：每 1 cm 短线、每 5 cm 长线 + 数字（0 = 最低位置）"""
+    """+x 面的 cm 刻度：每 1 cm 短线、每 5 cm 长线 + 数字（0 = 最低位置）。11-20 改成刻进去 0.6 mm（凸字打不好）"""
     out = None
     for k in range(0, 31):
         z = MARK0 + 10 * k
         if not (z0 + 1 < z < z1 - 1):
             continue
         ln = 5.0 if k % 5 == 0 else 2.5
-        t = (cq.Workplane("XY").workplane(offset=z - 0.4).center(TW / 2 + 0.3, WIN_W / 2 + 0.6 + ln / 2)
-             .rect(0.8, ln).extrude(0.8))
+        t = (cq.Workplane("XY").workplane(offset=z - 0.4).center(TW / 2, WIN_W / 2 + 0.6 + ln / 2)
+             .rect(2 * ENGRAVE, ln).extrude(0.8))
         out = t if out is None else out.union(t)
         if k % 5 == 0 and z + 2.6 < z1 - 0.5 and z - 2.6 > z0 + 0.5:
-            txt = (cq.Workplane("YZ").workplane(offset=TW / 2 - 0.1).center(-WIN_W / 2 - 4.5, z)
-                   .text(str(k), 4.5, 0.7, combine=False, halign="center", valign="center"))
+            txt = (cq.Workplane("YZ").workplane(offset=TW / 2 - ENGRAVE).center(-WIN_W / 2 - 4.5, z)
+                   .text(str(k), 4.5, 2 * ENGRAVE, combine=False, halign="center", valign="center"))
             out = out.union(txt)
     return out
 
 
 def make_tower(i):
-    """第 i 节塔（1~3）。1、2 节顶上有插接榫；第 3 节有两个导向孔隔板 + 塔顶弹性片（下端软限位）。"""
+    """第 i 节塔（1~3）。1、2 节顶上有插接榫；第 3 节有两个导向孔隔板（下面 45° 漏斗，免支撑）。"""
     z0, z1 = SEG[i - 1], SEG[i]
     t = _tube(z0, z1)
     if i < 3:   # 顶上插接榫（前面开口，刻度窗不被挡）
         inner = TW - 2 * TWALL
-        sp = (cq.Workplane("XY").workplane(offset=z1 - 0.01).rect(inner - 0.3, inner - 0.3).extrude(SPIGOT)
+        sp = (cq.Workplane("XY").workplane(offset=z1 - 0.01).rect(inner - 0.6, inner - 0.6).extrude(SPIGOT)
+              .edges(">Z").chamfer(0.8)   # 11-20 榫单边间隙 0.15 → 0.3 + 顶倒角，好插
               # 下半截伸进塔里 5 mm、和塔壁熔成一体（不然榫是悬空的）
               .union(cq.Workplane("XY").workplane(offset=z1 - 5).rect(inner + 0.4, inner + 0.4).extrude(5))
-              .cut(cq.Workplane("XY").workplane(offset=z1 - 6).rect(inner - 3.5, inner - 3.5).extrude(SPIGOT + 8))
-              .cut(cq.Workplane("XY").workplane(offset=z1 - 6).center(TW / 2, 0).rect(TW, WIN_W).extrude(SPIGOT + 8)))
+              # 伸进塔里那截的底面改 45° 斜（原来是 1.75 mm 宽的平悬空）
+              .union(cq.Workplane("XY").workplane(offset=z1 - 7.2).rect(inner + 0.4, inner + 0.4).extrude(2.21)
+                     .cut(cq.Workplane("XY").workplane(offset=z1 - 7.21).rect(inner + 0.4, inner + 0.4)
+                          .workplane(offset=2.22).rect(inner - 3.9, inner - 3.9).loft()))
+              .cut(cq.Workplane("XY").workplane(offset=z1 - 9).rect(inner - 3.5, inner - 3.5).extrude(SPIGOT + 12))
+              .cut(cq.Workplane("XY").workplane(offset=z1 - 9).center(TW / 2, 0).rect(TW, WIN_W).extrude(SPIGOT + 12)))
         t = t.union(sp)
     else:
         t = t.union(_plate_with_hole(IB_TOP)).union(_plate_with_hole(H))
         t = t.cut(cq.Workplane("XY").workplane(offset=H - 1.0).circle((ROD_D + BUSH_CLR) / 2 + 1.0)
                   .workplane(offset=1.01).circle((ROD_D + BUSH_CLR) / 2).loft())
-        for k in range(4):   # 塔顶 4 片往里斜的弹性片：球头法兰落在上面
-            tab = (cq.Workplane("XZ").polyline([(7.6, H - 0.01), (7.6 + TAB_T, H - 0.01),
-                                                 (4.9 + TAB_T, H + 3.0), (4.9, H + 3.0)]).close()
-                   .extrude(TAB_W / 2, both=True).rotate((0, 0, 0), (0, 0, 1), 45 + 90 * k))
-            t = t.union(tab)
     # 刻度观察窗（+x 面）
     w0 = max(z0 + 3, MARK0 - 6) if i == 1 else z0 + 3
     w1 = min(z1 - 3, IB_TOP - PLATE - FUN - 1)
@@ -158,7 +157,7 @@ def make_tower(i):
         t = t.cut(cq.Workplane("XY").workplane(offset=w0).center(TW / 2, 0).rect(TWALL * 3, WIN_W).extrude(w1 - w0))
     sc = _scale(z0, z1)
     if sc is not None:
-        t = t.union(sc)
+        t = t.cut(sc)
     return t
 
 
@@ -277,13 +276,16 @@ def check(parts, meshes):
 
 
 def bambu_ball():
-    """11-20 重打：球头（孔改大、热熔胶固定）+ 第 3 节塔（导向孔改大）→ 球头和第3节塔_A1.3mf"""
+    """11-20 重打（底座、托架不重打）：盘 1 黑 PLA 三节塔 + 球头，盘 2 黄 PETG 限位环 → 重打_A1.3mf"""
     import make_plates as MP
-    MP.main(FILES=["alt_ball.stl", "alt_tower_3.stl"],
-            PLACE={"alt_ball.stl": [(1, 150, 128)], "alt_tower_3.stl": [(1, 110, 128)]}, EXTRUDER={},
-            PER_OBJ={"alt_ball.stl": {"wall_loops": "3", "sparse_infill_density": "20%"},
-                     "alt_tower_3.stl": {"wall_loops": "3"}},
-            PLATE_NAMES={1: "定高-重打-PLA"}, OUT=HERE / "球头和第3节塔_A1.3mf")
+    MP.main(FILES=["alt_tower_1.stl", "alt_tower_2.stl", "alt_tower_3.stl", "alt_ball.stl", "alt_collar.stl"],
+            PLACE={"alt_tower_1.stl": [(1, 70, 128)], "alt_tower_2.stl": [(1, 110, 128)],
+                   "alt_tower_3.stl": [(1, 150, 128)], "alt_ball.stl": [(1, 190, 128)],
+                   "alt_collar.stl": [(2, 128, 128)]},
+            EXTRUDER={"alt_collar.stl": 4},
+            PER_OBJ={k: {"wall_loops": "3"} for k in ("alt_tower_1.stl", "alt_tower_2.stl", "alt_tower_3.stl")}
+            | {k: {"wall_loops": "3", "sparse_infill_density": "20%"} for k in ("alt_ball.stl", "alt_collar.stl")},
+            PLATE_NAMES={1: "定高重打-PLA", 2: "定高重打-限位环-PETG"}, OUT=HERE / "定高重打_A1.3mf")
 
 
 if __name__ == "__main__":
