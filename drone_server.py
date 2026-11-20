@@ -135,6 +135,9 @@ def http_get(path, timeout=0.6):
         return r.read().decode("utf-8", "replace")
 
 
+CTL = {"cid": None, "t": 0.0}; CTL_LOCK = threading.Lock()   # 11-20 控制权（见 /api/send）
+
+
 class WifiLink:
     """控制和遥测走 UDP 4210（固件 v3+，独立任务，网页服务卡了也不影响）；其它命令走 HTTP。
     固件不支持 UDP 时退回 HTTP 轮询。每秒的丢包 / 延迟写进 drone_link.log。"""
@@ -228,7 +231,7 @@ class WifiLink:
                     cam_rec.get().start(now)
                 self.full.append("%.3f,%s,%d,%.2f,%.2f,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s" % (
                     now - self.full_t0, a[2], self.thr, self.r, self.p, a[5], a[6], a[19] if len(a) > 19 else "0", a[9],
-                    a[10], a[11], a[12], a[13], a[17], cam_rec.get().track_cm(), "1" if a[18] == "0" else "0"))
+                    a[10], a[11], a[12], a[13], a[17], cam_rec.get().track_cm(), "1" if a[18] == "0" else "0") + ",%.2f" % self.y)
             if getattr(self, "was_arm", False) and not arm:
                 threading.Thread(target=save_bb, args=(self.host, a[4]), daemon=True).start()
                 rows = getattr(self, "full", [])
@@ -238,7 +241,7 @@ class WifiLink:
                     try:
                         d = os.path.join(HERE, "flights", "full"); os.makedirs(d, exist_ok=True)
                         with open(os.path.join(d, fn), "w", encoding="utf-8") as f:
-                            NL = chr(10); f.write("t,vb_mv,thr_cmd,stick_r,stick_p,roll,pitch,yaw,gy,o1,o2,o3,o4,rssi,alt_cm,usb" + NL + NL.join(rows) + NL)
+                            NL = chr(10); f.write("t,vb_mv,thr_cmd,stick_r,stick_p,roll,pitch,yaw,gy,o1,o2,o3,o4,rssi,alt_cm,usb,stick_y" + NL + NL.join(rows) + NL)
                     except Exception:
                         pass
                 self.full = []
@@ -696,6 +699,21 @@ class H(BaseHTTPRequestHandler):
             lines = [l.strip() for l in body.splitlines() if l.strip()]
             if not LINK["obj"]:
                 return self._json({"ok": 0, "why": "没连接"})
+            # 11-20 一次只让一个控制端飞：谁先发控制命令谁拿到控制权，它 1.5 s 没发命令（或上锁）才放开；急停谁都能发
+            cid = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query).get("cid", ["?"])[0]
+            ctl = [l for l in lines if l[:1] in "GQKAHJS" and not l.startswith("A,0")]
+            now = time.time()
+            with CTL_LOCK:
+                own, last = CTL["cid"], CTL["t"]
+                if ctl:
+                    if own and own != cid and now - last < 1.5:
+                        lines = [l for l in lines if l not in ctl]   # 别人的控制命令丢掉，查询/改参数照常
+                        if not lines: return self._json({"ok": 0, "why": "别的控制端（%s）正在飞" % own, "busy": own})
+                    elif own == cid:
+                        CTL["t"] = now                                # 控制端续命
+                    elif any(l.startswith(("A,1", "H,", "J,", "S,")) and not l.startswith(("H,0", "S,0")) for l in ctl):
+                        CTL["cid"], CTL["t"] = cid, now               # 解锁 / 转电机才算拿控制权（页面开着发油门 0 心跳不算）
+                if any(l.startswith(("A,0", "X")) for l in lines) and CTL["cid"] == cid: CTL["cid"] = None
             try:
                 LINK["obj"].send(lines)
             except Exception as e:

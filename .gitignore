@@ -12,3 +12,6 @@ drone_link.log
 
 # 资料包解压出来的副本（原 zip 已在仓库里）
 pack/ESP32-1S_drone_pack/
+
+# 定高架标注录像（原始录像在 flights/video，也不提交；README 用的是压缩 GIF）
+flights/rig/*.mp4

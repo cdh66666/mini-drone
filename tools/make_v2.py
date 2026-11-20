@@ -986,7 +986,8 @@ rep('''  if (g_vcomp && vbatMv > 3000 && thr > 0) {
     float vc = 3950.0f / (float)vbatMv;
     if (vc < 0.92f) vc = 0.92f; if (vc > 1.2f) vc = 1.2f;
     thr = (int)(thr * vc); if (thr > P.mthr) thr = P.mthr;
-  }''', '''  float vcc = 1.0f;   // v17：同一个系数也乘到纠正量上
+  }''', '''  if (g_armed && g_thr > 0 && thr > g_iThr && g_dith > 0.5f) { thr += (int)(g_dith * sinf(g_dph)); if (thr > P.mthr) thr = P.mthr; }   // v23c 辨识用的 6 Hz 小抖动（±2%，位置只晃 ~0.1 mm）
+  float vcc = 1.0f;   // v17：同一个系数也乘到纠正量上
   if (g_vcomp && vbatMv > 3000 && thr > 0) {
     float vc = 3950.0f / (float)vbatMv;
     if (vc < 0.92f) vc = 0.92f; if (vc > 1.2f) vc = 1.2f;
@@ -1443,5 +1444,172 @@ rep('  const float oR = pidR.step(spR, g_gr, dt, IMAX, g_dfc);', '''  {
     pidR.irel = fR * ag; pidP.irel = fP * ag;
   }
   const float oR = pidR.step(spR, g_gr, dt, IMAX, g_dfc);''')
+# 11-19 压上下弹不再跟飞手抢油门：飞手一改油门（≥0.5%），竖直速度估计清零（把这次上下当成有意的）
+rep('''        if (g_tramp > 0.01f && tOn < g_tramp) thr = (int)(thr * (tOn / g_tramp));''', '''        { static int lc = -1; if (lc < 0 || abs((int)g_thr - lc) >= 5) vzh = 0; lc = (int)g_thr; }   // 11-19 飞手改油门 → 不抵消
+        if (g_tramp > 0.01f && tOn < g_tramp) thr = (int)(thr * (tOn / g_tramp));''')
+# ======== v21（11-20）：性能指标 K 命令 + /api/perf ========
+rep('#define FW_VER "flight-v20"', '#define FW_VER "flight-v21"')
+rep('static volatile uint32_t g_tImu = 0, g_tImuMax = 0, g_tStep = 0, g_tStepMax = 0, g_tJit = 0;',
+    'static volatile uint32_t g_tImu = 0, g_tImuMax = 0, g_tStep = 0, g_tStepMax = 0, g_tJit = 0, g_tCtl = 0, g_tCtlMax = 0, g_jHist[6] = {0};')
+rep('      controlStep(cdt);\n', """      { const int64_t c0 = esp_timer_get_time(); controlStep(cdt);
+        static uint32_t ca = 0, cn = 0, cm = 0; const uint32_t cd = (uint32_t)(esp_timer_get_time() - c0);
+        ca += cd; if (cd > cm) cm = cd; if (++cn >= 250) { g_tCtl = ca / cn; g_tCtlMax = cm; ca = cn = cm = 0; } }
+""")
+rep('      acc += d; if (d > mx) mx = d; if (j > jm) jm = j;\n',
+    '      acc += d; if (d > mx) mx = d; if (j > jm) jm = j;\n      g_jHist[j < 20 ? 0 : j < 50 ? 1 : j < 100 ? 2 : j < 200 ? 3 : j < 500 ? 4 : 5]++;   // 节拍偏差分布（us）\n')
+rep('static TaskHandle_t g_ctrlH = nullptr;', 'TaskHandle_t g_ctrlH = nullptr;')
+rep('static void buildParamsJson(char* j, size_t n) {', r"""extern TaskHandle_t g_ctrlH;
+static void buildPerfJson(char* j, size_t n) {
+  snprintf(j, n,
+    "{\"fw\":\"%s\",\"up\":%lu,\"mhz\":%lu,\"hz\":%lu,\"crate\":%d,"
+    "\"tImu\":%lu,\"tImuMax\":%lu,\"tCtl\":%lu,\"tCtlMax\":%lu,\"tStep\":%lu,\"tStepMax\":%lu,\"jit\":%lu,"
+    "\"jh\":[%lu,%lu,%lu,%lu,%lu,%lu],\"i2cFail\":%lu,"
+    "\"heap\":%lu,\"heapMin\":%lu,\"heapTot\":%lu,\"ps\":%lu,\"psTot\":%lu,"
+    "\"sketch\":%lu,\"sketchFree\":%lu,\"stkCtl\":%lu,\"stkLoop\":%lu,\"lbN\":%d,\"rssi\":%d}",
+    FW_VER, (unsigned long)(millis() / 1000), (unsigned long)getCpuFrequencyMhz(), (unsigned long)g_loopHz, (int)g_crate,
+    (unsigned long)g_tImu, (unsigned long)g_tImuMax, (unsigned long)g_tCtl, (unsigned long)g_tCtlMax,
+    (unsigned long)g_tStep, (unsigned long)g_tStepMax, (unsigned long)g_tJit,
+    (unsigned long)g_jHist[0], (unsigned long)g_jHist[1], (unsigned long)g_jHist[2], (unsigned long)g_jHist[3], (unsigned long)g_jHist[4], (unsigned long)g_jHist[5],
+    (unsigned long)i2cFail,
+    (unsigned long)ESP.getFreeHeap(), (unsigned long)ESP.getMinFreeHeap(), (unsigned long)ESP.getHeapSize(),
+    (unsigned long)ESP.getFreePsram(), (unsigned long)ESP.getPsramSize(),
+    (unsigned long)ESP.getSketchSize(), (unsigned long)ESP.getFreeSketchSpace(),
+    (unsigned long)(g_ctrlH ? uxTaskGetStackHighWaterMark(g_ctrlH) : 0), (unsigned long)uxTaskGetStackHighWaterMark(NULL),
+    LBN, (int)WiFi.RSSI());
+}
+
+static void buildParamsJson(char* j, size_t n) {""")
+rep('static void handleLB() {', """static void handlePerf() { char j[760]; buildPerfJson(j, sizeof(j)); server.send(200, "application/json", j); }
+static void handleLB() {""")
+rep("  if (c == 'W') { paramsSave();", """  if (c == 'M') { char j[760]; buildPerfJson(j, sizeof(j)); Serial.printf("#PERF,%s\\n", j); return; }   // v21 性能指标
+  if (c == 'W') { paramsSave();""")
+rep('  server.on("/api/lb", handleLB);', '  server.on("/api/lb", handleLB);\n  server.on("/api/perf", handlePerf);')
+
+# ======== v22（11-20）：1 kHz 节拍改用 core 1 上的硬件定时器中断 + 卡顿诊断 + 飞行中不写闪存 ========
+rep('#define FW_VER "flight-v21"', '#define FW_VER "flight-v22"')
+rep('static volatile uint32_t g_tImu = 0, g_tImuMax = 0, g_tStep = 0, g_tStepMax = 0, g_tJit = 0, g_tCtl = 0, g_tCtlMax = 0, g_jHist[6] = {0};',
+    'static volatile uint32_t g_tImu = 0, g_tImuMax = 0, g_tStep = 0, g_tStepMax = 0, g_tJit = 0, g_tCtl = 0, g_tCtlMax = 0, g_jHist[6] = {0};\n'
+    'static volatile int64_t g_cbUs = 0; static volatile uint32_t g_wakeMax = 0, g_nGap = 0, g_gapMax = 0, g_gapAt = 0, g_nTick = 0, g_saveLater = 0, g_nDefer = 0; static int g_tsrc = 0;')
+rep('static void ctrlTickCb(void*) { if (g_ctrlH) xTaskNotifyGive(g_ctrlH); }',
+    '''static void ctrlTickCb(void*) { g_cbUs = esp_timer_get_time(); if (g_ctrlH) xTaskNotifyGive(g_ctrlH); }
+static void IRAM_ATTR ctrlTickIsr() {   // v22：硬件定时器中断，挂在 core 1，WiFi（core 0）再忙也不会拖它
+  g_cbUs = esp_timer_get_time();
+  BaseType_t w = pdFALSE; if (g_ctrlH) vTaskNotifyGiveFromISR(g_ctrlH, &w); if (w) portYIELD_FROM_ISR();
+}''')
+rep('''  esp_timer_handle_t th = nullptr;
+  esp_timer_create_args_t ta = {};
+  ta.callback = ctrlTickCb; ta.name = "ctl";
+  esp_timer_create(&ta, &th);
+  esp_timer_start_periodic(th, 1000000 / CTRL_HZ);''', '''  { Preferences pp; pp.begin("diag", true); g_tsrc = pp.getInt("tsrc", 1); pp.end(); }   // 1 = 硬件定时器（默认），0 = 旧 esp_timer
+  hw_timer_t* hwt = nullptr;
+  if (g_tsrc == 1) { hwt = timerBegin(1000000); if (hwt) { timerAttachInterrupt(hwt, &ctrlTickIsr); timerAlarm(hwt, 1000000 / CTRL_HZ, true, 0); } }
+  if (!hwt) {
+    g_tsrc = 0;
+    esp_timer_handle_t th = nullptr;
+    esp_timer_create_args_t ta = {};
+    ta.callback = ctrlTickCb; ta.name = "ctl";
+    esp_timer_create(&ta, &th);
+    esp_timer_start_periodic(th, 1000000 / CTRL_HZ);
+  }''')
+rep('''    const int64_t now = esp_timer_get_time();
+    float dt = (float)(now - prev) * 1e-6f;''', '''    const int64_t now = esp_timer_get_time();
+    { const uint32_t wl = (uint32_t)(now - g_cbUs); if (wl < 100000 && wl > g_wakeMax) g_wakeMax = wl;   // 信号到了多久任务才醒
+      const uint32_t gp = (uint32_t)(now - prev); g_nTick++;
+      if (gp > 1500) { g_nGap++; if (gp > g_gapMax) { g_gapMax = gp; g_gapAt = millis(); } } }
+    float dt = (float)(now - prev) * 1e-6f;''')
+rep('''    "\\"sketch\\":%lu,\\"sketchFree\\":%lu,\\"stkCtl\\":%lu,\\"stkLoop\\":%lu,\\"lbN\\":%d,\\"rssi\\":%d}",''',
+    '''    "\\"sketch\\":%lu,\\"sketchFree\\":%lu,\\"stkCtl\\":%lu,\\"stkLoop\\":%lu,\\"lbN\\":%d,\\"rssi\\":%d,"
+    "\\"tsrc\\":%d,\\"nTick\\":%lu,\\"nGap\\":%lu,\\"gapMax\\":%lu,\\"gapAgo\\":%lu,\\"wakeMax\\":%lu,\\"nDefer\\":%lu,\\"arm\\":%d}",''')
+rep('''    LBN, (int)WiFi.RSSI());
+}''', '''    LBN, (int)WiFi.RSSI(),
+    g_tsrc, (unsigned long)g_nTick, (unsigned long)g_nGap, (unsigned long)g_gapMax, (unsigned long)(g_gapAt ? millis() - g_gapAt : 0),
+    (unsigned long)g_wakeMax, (unsigned long)g_nDefer, g_armed ? 1 : 0);
+  g_gapMax = 0; g_wakeMax = 0; g_gapAt = 0;   // 最大值按“两次读之间”统计
+}''')
+rep('static void handleSave() { paramsSave(); sendJson("{\\"ok\\":1}"); }',
+    'static void handleSave() { if (g_armed) { g_saveLater = 1; g_nDefer++; } else paramsSave(); sendJson("{\\"ok\\":1}"); }   // v22 飞行中不写闪存（写闪存会卡住两个核）')
+rep('''  if (c == 'W') { paramsSave();    Serial.println("#ACK,SAVE"); return; }''',
+    '''  if (c == 'W') { if (g_armed) { g_saveLater = 1; g_nDefer++; Serial.println("#ACK,SAVE,LATER"); } else { paramsSave(); Serial.println("#ACK,SAVE"); } return; }''')
+rep('  if (g_needSave && !g_armed) {', '  if (g_saveLater && !g_armed) { g_saveLater = 0; paramsSave(); }\n  if (g_needSave && !g_armed) {')
+rep('''  if (c == 'M') { char j[760];''', '''  if (c == 'M' && s[1] == ',') { Preferences pp; pp.begin("diag", false); pp.putInt("tsrc", atoi(s + 2)); pp.end(); Serial.printf("#ACK,TSRC,%d,reboot\\n", atoi(s + 2)); if (!g_armed) { delay(300); ESP.restart(); } return; }   // M,0/1 选节拍来源，自动重启生效
+  if (c == 'M') { char j[900];''')
+rep('static void handlePerf() { char j[760];', 'static void handlePerf() { char j[900];')
+
+rep('  xTaskCreatePinnedToCore(ctrlTask, "ctrl", 4096, nullptr, 5, nullptr, 1);', '  xTaskCreatePinnedToCore(ctrlTask, "ctrl", 4096, nullptr, 20, nullptr, 1);   // v22：优先级 5→20，压过 core 1 上的事件/网页任务')
+# ======== v23（11-20）：推力在线辨识 + 定高模式（油门杆 = 升降速度） ========
+rep('#define FW_VER "flight-v22"', '#define FW_VER "flight-v23"')
+rep('static float g_vz = 0, g_hz = 0, g_htg = 0;   // 竖直速度、高度、目标高度（记录用）',
+    'static float g_vz = 0, g_hz = 0, g_htg = 0;   // 竖直速度、高度、目标高度（记录用）\n'
+    'static float g_alt = 0, g_akv = 3.0f, g_avs = 3.0f, g_azb = 0.0f;   // v23 定高：开关、刹车阻尼 (m/s² 每 m/s)、（备用）、飞行中加计偏置 g\n'
+    'static float g_hovF = 0, g_hadj = 0, g_aki = 2.0f; static float g_kf = 0, g_hovE = 0, g_kd = 0, g_dph = 0, g_dith = 20.0f, g_freeT = 0; static int g_kN = 0, g_altOn = 0, g_thrEng = 0, g_air = 0, g_free = 0;   // v23 推力系数（比推力 g / 等效输出‰）、辨识出的悬停等效输出 ‰')
+rep('''      if (moved) on = false;
+      else if (!wasOn && g_ah > 0.001f) on = true;      // 只在起飞那一下接管''', '''      // v23 推力辨识：机身 z 加计读到的就是“推力 / 重量”，跟飞机在升还是降无关。
+      // 等效输出 eff = 平均 PWM × 电池电压 / 3.95 V（推力台实测推力 ∝ 占空比 × 电压），k = 比推力 / eff
+      {
+        const float mo = 0.25f * (float)(g_out[0] + g_out[1] + g_out[2] + g_out[3]);
+        int mxo = g_out[0]; for (int i = 1; i < 4; i++) if (g_out[i] > mxo) mxo = g_out[i];
+        const float eff = mo * (float)vbatMv / 3950.0f, sf = g_az / az0 - g_azb;
+        // v23c 抖动辨识：油门上叠一个 6 Hz 的小抖动，看加计跟不跟着抖。
+        // 悬空：加计抖动幅度 / 输出抖动幅度 = 推力系数（≈ 比值法的 k）；贴着地面/限位：加计不动 → 判“贴着”，冻结辨识
+        static float sfL = 1, efL = 0, Ise = 0, Ice = 0, Isa = 0, Ica = 0, freeT = 0;
+        if (efL == 0) efL = eff;
+        sfL += (sf - sfL) * dt / 0.3f; efL += (eff - efL) * dt / 0.3f;
+        g_dph += 6.2831853f * 6.0f * dt; if (g_dph > 6.2831853f) g_dph -= 6.2831853f;
+        { const float sn = sinf(g_dph), cs = cosf(g_dph), wl = dt / 0.8f, eh = eff - efL, ah = sf - sfL;
+          Ise += (eh * sn - Ise) * wl; Ice += (eh * cs - Ice) * wl; Isa += (ah * sn - Isa) * wl; Ica += (ah * cs - Ica) * wl; }
+        const float ae = sqrtf(Ise * Ise + Ice * Ice), aa = sqrtf(Isa * Isa + Ica * Ica);
+        g_kd = ae > 2.0f ? aa / ae : 0;
+        const float kr = eff > 150.0f ? sf / eff : 0;
+        g_free = (kr > 0 && g_kd > 0.4f * kr) ? 1 : 0;
+        if (g_free && tOn > 0.8f) freeT += dt; else freeT = 0;
+        if (freeT > 0.3f) g_air = 1;
+        g_freeT = freeT;
+        if (freeT > 0.3f && eff > 150.0f && mxo < P.mthr - 5 && sf > 0.6f && sf < 1.8f && vbatMv > 2800 && tilt > 0.85f) {
+          const float kk = sf / eff;
+          if (g_kN == 0) g_kf = kk; else g_kf += (kk - g_kf) * dt / 0.6f;
+          if (g_kN < 1000000) g_kN++;
+        }
+        g_hovE = g_kf > 1e-6f ? 1.0f / g_kf : 0;
+        if (g_hovF > 1.0f) g_hovE = g_hovF;   // v23d 指定悬停推力（架上用相机拟合值，把“控制”和“辨识”分开测）
+      }
+      // v23 定高：起飞 1.2 s 后、辨识够了才接管；接管那一刻的油门杆 = “不升不降”，杆往上/下 = 升/降速度
+      if (g_alt > 0.5f && !g_altOn && tOn > 1.2f && ((g_kN > 200 && g_freeT > 0.5f) || (g_hovF > 1.0f && g_air))) { g_altOn = 1; g_thrEng = g_thr; vzh = 0; g_hadj = 0; }
+      if (g_altOn && (g_alt < 0.5f || g_thr < g_thrEng / 2)) g_altOn = 0;   // 关了或飞手收油门降落 → 还给直接油门
+      if (g_altOn) {
+        // 中立点 = 辨识出的悬停推力（随电量/电机/负载自动跟）；杆偏离中立点 = 推力增减；松回中立点 = 用竖直速度阻尼刹住
+        const float dstk = (float)(g_thr - g_thrEng);          // 飞手加减的量（‰）
+        float acmd = -g_akv * vzh; if (acmd > 2.0f) acmd = 2.0f; if (acmd < -2.0f) acmd = -2.0f;
+        if (fabsf(dstk) > 15.0f) acmd *= 0.3f;                  // 飞手在主动升降时阻尼减弱，不跟他抢
+        const float effc = (g_hovE * (1.0f + g_hadj) * (1.0f + acmd / 9.81f) + dstk) / (tilt > 0.7f ? tilt : 0.7f);
+        const float vsp = dstk;
+        // v23e 自动修正悬停推力：中立时让实测竖直加速度 → 0（IMU 测的竖直加速度在架上也等于整体的真实加速度，只有比值辨识会被导杆带偏）
+        { static float aLp = 0; aLp += (av / 9.81f - aLp) * dt / 0.08f;
+          if (fabsf(dstk) < 15.0f) g_hadj += -g_aki * aLp * dt;
+          if (g_hadj > 0.25f) g_hadj = 0.25f; if (g_hadj < -0.25f) g_hadj = -0.25f; }
+        float vcx = (vbatMv > 3000) ? 3950.0f / (float)vbatMv : 1.0f; if (vcx < 0.92f) vcx = 0.92f; if (vcx > 1.2f) vcx = 1.2f;
+        thr = (int)(effc * 3950.0f / (float)(vbatMv > 2800 ? vbatMv : 3950) / (g_vcomp ? vcx : 1.0f));
+        if (thr < 0) thr = 0; if (thr > P.mthr) thr = P.mthr;
+        tOn += 0;  g_vz = vzh; g_hz = g_hovE / 1000.0f; g_htg = vsp;
+        on = false;
+      }
+      else if (moved) on = false;
+      else if (!wasOn && g_ah > 0.001f) on = true;      // 只在起飞那一下接管''')
+rep('''      } else {
+        // 软启动：起飞那一下 g_tramp 秒内从 0 爬到指令油门''', '''      } else if (!g_altOn) {
+        // 软启动：起飞那一下 g_tramp 秒内从 0 爬到指令油门''')
+rep('''      if (wasOn && iN > 250) {   // 这次定高跑过：按积分平均值修正悬停油门''', '''      if (g_kN > 1500 && g_hovE > 200 && g_hovE < 900) { g_hov = g_hovE; g_needSave = true; }   // v23 落地：辨识出的悬停等效输出存下来，下次起飞参考
+      g_kN = 0; g_altOn = 0; g_air = 0;
+      if (wasOn && iN > 250) {   // 这次定高跑过：按积分平均值修正悬停油门''')
+rep('      else if (!strcmp(k, "khp")) g_khp = v;', '      else if (!strcmp(k, "khp")) g_khp = v;\n      else if (!strcmp(k, "alt")) g_alt = v;\n      else if (!strcmp(k, "akv")) g_akv = v;\n      else if (!strcmp(k, "avs")) g_avs = v;\n      else if (!strcmp(k, "azb")) g_azb = v;\n      else if (!strcmp(k, "dith")) g_dith = v;\n      else if (!strcmp(k, "hovF")) g_hovF = v;\n      else if (!strcmp(k, "aki")) g_aki = v;')
+rep('  else if (k == "khp") g_khp = v;', '  else if (k == "khp") g_khp = v;\n  else if (k == "alt") g_alt = v;\n  else if (k == "akv") g_akv = v;\n  else if (k == "avs") g_avs = v;\n  else if (k == "azb") g_azb = v;\n  else if (k == "dith") g_dith = v;\n  else if (k == "hovF") g_hovF = v;\n  else if (k == "aki") g_aki = v;')
+rep('\\"nf\\":%.0f,\\"nq\\":%.1f}",', '\\"nf\\":%.0f,\\"nq\\":%.1f,\\"alt\\":%.0f,\\"altOn\\":%d,\\"hovE\\":%.0f,\\"kN\\":%d,\\"akv\\":%.1f,\\"avs\\":%.1f,\\"azb\\":%.3f,\\"air\\":%d,\\"kdr\\":%.2f,\\"dith\\":%.0f,\\"hadj\\":%.3f}",')
+rep('(double)g_nf, (double)g_nq);', '(double)g_nf, (double)g_nq, (double)g_alt, g_altOn, (double)g_hovE, g_kN, (double)g_akv, (double)g_avs, (double)g_azb, g_air, (double)(g_kf > 1e-6f ? g_kd / g_kf : 0), (double)g_dith, (double)g_hadj);')
+
+rep('''static void handleParams() {
+  char j[512];''', '''static void handleParams() {
+  char j[900];''')
+rep('''    char j[512];
+    buildParamsJson(j, sizeof(j));''', '''    char j[900];
+    buildParamsJson(j, sizeof(j));''')
 open(dst, 'w', encoding='utf-8').write(t)
 print('ok')

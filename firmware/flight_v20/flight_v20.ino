@@ -761,6 +761,7 @@ static void controlStep(float dt) {
         if (g_htg >= 0.98f * g_ht) { iSum += g_ah * g_khi * iz; iN++; }
       } else {
         // 软启动：起飞那一下 g_tramp 秒内从 0 爬到指令油门
+        { static int lc = -1; if (lc < 0 || abs((int)g_thr - lc) >= 5) vzh = 0; lc = (int)g_thr; }   // 11-19 飞手改油门 → 不抵消
         if (g_tramp > 0.01f && tOn < g_tramp) thr = (int)(thr * (tOn / g_tramp));
         // 压上下弹（离地后才有意义；油门太低时不加）
         if (thr >= g_iThr && tOn > 0.1f) {

@@ -152,18 +152,23 @@ h2{margin:0;font-size:24px}
 .camhint{font-size:12px;color:var(--warn)}
 .ftabs{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
 .ftabs button{padding:7px 0;font-size:15px}.ftabs button.cur{background:var(--acc);color:#fff}
-.fpanel{display:flex;flex-direction:column;gap:8px;min-height:0;overflow:auto}
+.fpanel{display:flex;flex-direction:column;gap:8px;min-height:0;overflow:auto;flex:1 1 0}
+.fly.fp-wide>.side{min-height:0}
 .fpanel .ptab{padding:8px}.fpanel .prow{grid-template-columns:76px 30px 120px 30px minmax(0,1fr);gap:6px}
-.fpanel .prow .ph{font-size:11px}
-.fpanel .fcp svg{max-height:150px}
+.fpanel .prow .ph{font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fpanel .ptab{gap:3px;padding:6px 8px}.fpanel .prow button{padding:1px 0;font-size:16px}.fpanel .prow .pv{font-size:15px}.fpanel .prow>span:first-child,.fpanel .prow>b:first-child{font-size:13px}
 .fly.fp-wide{grid-template-columns:110px minmax(0,1fr) minmax(0,1.3fr)}
 nav button[data-s="4"],nav button[data-s="6"]{display:none}
 #fcSel{font:inherit;padding:6px 8px;border-radius:8px;border:1px solid var(--line);background:#0f1318;color:var(--fg)}
-.fcm{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}
-.fcm div{background:var(--card);border-radius:10px;padding:8px 10px;font-size:13px;color:var(--dim)}
-.fcm b{display:block;font-size:18px;color:var(--fg)}
-.fcp{display:flex;flex-direction:column;gap:6px;min-height:0}
-.fcp svg{width:100%;background:var(--card);border-radius:10px}
+.fcm{display:flex;flex-wrap:wrap;gap:4px 6px;flex:none}
+.fcm div{background:var(--card);border-radius:8px;padding:3px 8px;font-size:12px;color:var(--dim);white-space:nowrap}
+.fcm b{font-size:13px;color:var(--fg);margin-left:5px}
+.fcm div.warn b{color:#ff8a65}
+.fcp{display:flex;flex-direction:column;gap:5px;min-height:0;flex:1 1 0}
+.fcp svg{width:100%;flex:1 1 0;min-height:60px;background:var(--card);border-radius:10px}
+#fpCrv{overflow:hidden}
+#fpCrv>.row{flex:none;flex-wrap:nowrap}
+#fpCrv>.hint{flex:none;font-size:11px!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tt{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);gap:14px;min-height:0}
 .ttl,.ttr{display:flex;flex-direction:column;gap:10px;min-width:0}
 .ttch{display:grid;grid-template-columns:1.6fr repeat(4,1fr);gap:6px}
@@ -201,8 +206,9 @@ nav button[data-s="4"],nav button[data-s="6"]{display:none}
   .inst .level.sm .bub{width:18px;height:18px;margin:-9px}
   .inst .level.sm .ring{width:26px;height:26px;margin:-13px}
   .zbar{display:none}
-  .inst .camv{flex-basis:100%}
-  .inst:has(.camv:not([hidden])){flex-wrap:wrap}
+  .inst .camv{flex:0 1 46%;min-width:0}
+  .inst .camv .camctl{flex-wrap:wrap;justify-content:center}
+  .inst:has(.camv:not([hidden])){flex-wrap:nowrap;align-items:center}
   .camv img{max-height:22vh}
   .inst .cap{font-size:11px;text-align:center}
   .mrow{gap:6px;padding:6px 10px}.mrow .bar{width:auto;flex:1}
@@ -216,7 +222,7 @@ nav button[data-s="4"],nav button[data-s="6"]{display:none}
   .tpad{grid-template-columns:repeat(3,34px);gap:4px}
   .tpad button{height:30px}
   .khint{display:none}
-  .fly.fp-wide{grid-template-columns:64px minmax(0,1fr)}
+  .fly.fp-wide{grid-template-columns:64px minmax(0,1fr);grid-template-rows:minmax(0,1fr)}
   .fly.fp-wide>.mid{display:none}          /* 窄屏看参数/曲线时先收起仪表，空间给面板 */
   .fly.fp-wide>.thr{grid-row:1/2}
   .fly.fp-wide>.side{grid-row:1/2;grid-column:2}
@@ -414,7 +420,7 @@ nav button[data-s="4"],nav button[data-s="6"]{display:none}
         <button class="okb" id="arm">🔓 解锁</button>
         <button class="ghost" id="btnLand">⬇ 降落<small class="dim" style="font-size:12px;margin-left:4px">空格</small></button>
       </div>
-      <div class="amp"><span class="cap">方向幅度</span><input type="range" id="amp" min="0.04" max="0.6" step="0.02"><b id="ampTxt">--</b></div>
+      <div class="amp"><span class="cap">方向幅度</span><input type="range" id="amp" min="0.04" max="0.6" step="0.02"><b id="ampTxt">--</b><button class="ghost" id="altBtn" title="定高：起飞 1 秒后接管，悬停推力自动辨识（随电量自动跟），松回原油门就刹住不升不降">定高 关</button><span class="dim" id="altTxt" style="font-size:12px"></span></div>
       <div class="ftabs" id="ftabs"><button data-t="ctl" class="cur">控制</button><button data-t="par">参数</button><button data-t="crv">曲线</button></div>
       <div class="fpanel" id="fpPar" hidden></div>
       <div class="fpanel" id="fpCrv" hidden></div>
@@ -462,10 +468,10 @@ nav button[data-s="4"],nav button[data-s="6"]{display:none}
 
 <!-- 6 推力测试（厨房秤） -->
 <section class="step" data-s="5">
-  <div class="warnbar"><span class="i">⚖️</span><span>飞机倒过来（桨朝下）架在柱子上，放好后按秤的“清零”</span></div>
+  <div class="warnbar"><span class="i">⚖️</span><span>飞机倒过来（桨朝下）卡在测试架上、整个架子放秤上，按秤的“清零”；转起来秤读数就是推力（带不带负号都行）</span></div>
   <div class="tt">
     <div class="ttl">
-      <div class="tog" id="ttOk"><span class="box"></span>已倒置粘牢，桨旁边没东西</div>
+      <div class="tog" id="ttOk"><span class="box"></span>已卡牢，桨旁边没东西</div>
       <div class="cap">点一档：四个电机一起转（最多 10 秒），看秤稳定后输入读数，回车记录并停转</div>
       <div class="ttch" id="ttCh"><button data-c="0" class="cur">四个一起</button><button data-c="1">M1</button><button data-c="2">M2</button><button data-c="3">M3</button><button data-c="4">M4</button></div>
       <div class="ttlv" id="ttLv"></div>
@@ -544,10 +550,12 @@ async function readLoop(){
     if(S.on){ lost(); break; }
   }
 }
-function lost(){ S.on=false; setConn(false); armedUI(false); toast('连接断了，自动重连中…',1); go(0); }
+let reconn=false;
+function lost(){ S.on=false; reconn=true; setConn(false); armedUI(false); toast('连接断了，自动重连中…',1); }
 navigator.serial&&navigator.serial.addEventListener&&navigator.serial.addEventListener('disconnect',()=>{ if(S.on) lost(); });
 
 /* ---------------- 本地服务（drone_server.py：USB 或 WiFi，侧栏也能用） ---------------- */
+const CID='page-'+Math.random().toString(36).slice(2,6);   // 11-20 控制端编号：服务器一次只让一个控制端飞
 const SRV=!MOCK&&/^https?:$/.test(location.protocol);
 const srv={q:[],busy:false,since:0,mode:'',
   cbusy:false,
@@ -563,15 +571,15 @@ const srv={q:[],busy:false,since:0,mode:'',
   },
   async poll(){
     while(S.on){
-      try{const p=await (await fetch('/api/poll?since='+this.since)).json();this.since=p.n;p.lines.forEach(onLine);}
-      catch(e){ lost(); break; }
+      try{const p=await (await fetch('/api/poll?since='+this.since)).json();this.since=p.n;p.lines.forEach(onLine);this.fail=0;}
+      catch(e){ if(++this.fail>=8){ this.fail=0; lost(); break; } await new Promise(r=>setTimeout(r,250)); }
       await new Promise(r=>setTimeout(r,60));
     }
   },
   async flush(){
     if(this.busy||!this.q.length)return;this.busy=true;
     const body=this.q.splice(0).join(String.fromCharCode(10));
-    try{await fetch('/api/send',{method:'POST',body});}catch(e){}
+    try{const r=await (await fetch('/api/send?cid='+CID,{method:'POST',body})).json(); if(r&&r.busy&&!this.busyT){this.busyT=1;toast('别的控制端在飞（'+r.busy+'），这里只能看',1);setTimeout(()=>this.busyT=0,3000);} }catch(e){}
     this.busy=false;if(this.q.length)this.flush();
   }
 };
@@ -663,6 +671,7 @@ function faultTxt(f){
 function setConn(on){$('#cdot').classList.toggle('on',on);$('#ctext').textContent=on?'已连接':'未连接';}
 function afterConnect(){
   setConn(true); send('V'); markDone(0); netPanel();
+  if(reconn){ reconn=false; canSave=true; send('C'); toast('重新连上 ✓'); return; }   // 11-19 重连：参数飞机里已有，不再备份/重推，留在当前页
   backupThenPush();
   toast('连上了 ✓');
   const qs=/[?&]s=(\d)/.exec(location.search);   // ?s=N 直接打开第 N 步（截图、演示用）
@@ -679,6 +688,7 @@ function backupThenPush(){
 let curP=null;
 let pvWant=null,pvTry=0;
 function gotParams(j){
+  if(j&&typeof j.alt==='number'){ ALT.on=j.alt>0.5; altShow(j); }
   if(j&&typeof j.angP==='number') curP=j;
   // 写完回读：UDP 一次发十几条会丢，回读对不上的再发（最多 4 轮）
   if(pvWant&&j&&typeof j.angP==='number'){
@@ -689,8 +699,8 @@ function gotParams(j){
   if(canSave||typeof j.angP!=='number')return;
   clearTimeout(bakWait);
   const bak={time:new Date().toISOString(),params:j};
-  if(!lsGet('fly.backup',null)) lsSet('fly.backup',bak);   // 只留第一份（最原始的）
-  canSave=true; toast('原参数已备份 ✓'); pushParams();
+  const first=!lsGet('fly.backup',null); if(first) lsSet('fly.backup',bak);   // 只留第一份（最原始的）
+  canSave=true; if(first) toast('原参数已备份 ✓'); pushParams();
 }
 function saveIfSafe(){ if(canSave) send('W'); }
 $('#btnOrig').addEventListener('click',()=>{
@@ -703,6 +713,7 @@ function pushParams(save){
   const p=calcPid(0,0);
   // 11-19：偏航 P/I、机头锁定也按 tune.json 下发（不再空中自动试探）
   ['angP','rp','ri','rd','pp','pi','pd','yp','yi','idle','mthr','iThr','ya','yff','crate','lp2','dfc','cap','kff','kdz','tz','dzmax','irel','ag','nf','nq'].forEach(k=>{ if(p[k]!=null) send('E,'+k+','+p[k]); });
+  send('E,alt,'+(ALT.on?1:0));
   saveIfSafe();
   pvWant={}; ['angP','rp','ri','rd','pp','pi','pd','mthr','yff','crate','lp2','dfc','cap','kff','kdz','tz','dzmax','yp','yi','ya','irel','ag','nf','nq'].forEach(k=>{ if(typeof p[k]==='number') pvWant[k]=p[k]; }); pvTry=0;
   setTimeout(()=>send('C'),900);
@@ -710,6 +721,12 @@ function pushParams(save){
   $('#pidTxt').textContent='P '+p.rp+' · I '+p.ri+' · D '+p.rd+' · 角度 '+p.angP;
 }
 
+/* v23 定高开关：飞行中也能开关；参数只改内存（上电默认关） */
+const ALT={on:lsGet('fly.alt',false)};
+function altShow(j){ const b=$('#altBtn'); if(!b) return; b.textContent='定高 '+(ALT.on?'开':'关'); b.classList.toggle('cur',ALT.on);
+  if(j) $('#altTxt').textContent=(j.altOn?'接管中 · ':'')+(j.hovE>0?'悬停≈'+(j.hovE/10).toFixed(0)+'%':''); }
+$('#altBtn').addEventListener('click',()=>{ ALT.on=!ALT.on; lsSet('fly.alt',ALT.on); send('E,alt,'+(ALT.on?1:0)); altShow(); $('#altBtn').blur(); setTimeout(()=>send('C'),300); });
+setInterval(()=>{ if(S.on&&st.armed) send('C'); },1000);   // 飞行中每秒读一次：看辨识出的悬停推力
 /* 轮询：姿态回读 + 掉线判断 */
 setInterval(()=>{
   if(!S.on)return;
@@ -1020,8 +1037,8 @@ let confirmed=false;
 $('#confirm').addEventListener('click',()=>{confirmed=!confirmed;$('#confirm').classList.toggle('on',confirmed);});
 const thr=$('#thr');
 thr.addEventListener('input',()=>{st.target=+thr.value;st.landing=false;});
-const tk=$('#tkoff');tk.value=lsGet('fly.tkoff2',64);   // 60% 浮不出地效（只有 5~10 cm），默认 64
-tk.addEventListener('change',()=>{const v=Math.max(20,Math.min(90,+tk.value||64));tk.value=v;lsSet('fly.tkoff2',v);tk.blur();});
+const tk=$('#tkoff');tk.value=lsGet('fly.tkoff3',52);   // 11-20 拆护圈后 39 g：推力台测得悬停约 46%，起飞给 52%
+tk.addEventListener('change',()=>{const v=Math.max(20,Math.min(90,+tk.value||52));tk.value=v;lsSet('fly.tkoff3',v);tk.blur();});
 let pendingTk=false;
 function takeoffJump(){ const v=+tk.value||64; st.landing=false; st.target=v; st.cmd=v; thr.value=v; toast('⏎ 起飞 '+v+'%'); }
 function takeoff(){
@@ -1104,8 +1121,8 @@ window.addEventListener('keydown',e=>{
   const k=WASD[e.code];
   if(k){e.preventDefault();keys[k]=true;$('#'+KEYMAP[k]).classList.add('on');return;}
   if(e.key==='Enter'){e.preventDefault();if(cur===3)takeoff();return;}
-  if(cur===3&&e.code==='ArrowUp'){e.preventDefault();thr.value=Math.min(100,+thr.value+1);st.target=+thr.value;st.landing=false;}
-  if(cur===3&&e.code==='ArrowDown'){e.preventDefault();thr.value=Math.max(0,+thr.value-1);st.target=+thr.value;}
+  if(cur===3&&e.code==='ArrowUp'){e.preventDefault();thr.value=Math.min(100,+thr.value+2);st.target=+thr.value;st.landing=false;}
+  if(cur===3&&e.code==='ArrowDown'){e.preventDefault();thr.value=Math.max(0,+thr.value-2);st.target=+thr.value;}
 },true);
 window.addEventListener('keyup',e=>{
   if(e.target&&e.target.tagName==='INPUT'&&e.target.type!=='range') return;
@@ -1132,7 +1149,7 @@ const PDEF=[
   {k:'dfc',ks:['dfc'],n:'D 项低通',opts:[0,30,60,100],lab:['不滤（CF）','30 Hz（旧）','60 Hz','100 Hz'],h:'电机发烫或嗡嗡抖再打开'},
   {k:'cap',ks:['cap'],n:'顶满处理',opts:[0,1],lab:['按比例缩（旧）','整体平移（CF）'],h:'某路顶到上限时四路一起减，保住扶正的差值'},
 ];
-const REC={rp:3.5,rd:0.08,ri:1.0,angP:6,yff:-60,crate:500,lp2:1,dfc:30,cap:1,kff:0.8,kdz:300,irel:40,ag:2};   // 11-18 测试架上调出来的   // Claude 推荐（11-16，49 g 带保护圈）
+const REC={rp:2.8,rd:0.065,ri:0.8,angP:6,yff:-60,crate:500,lp2:1,dfc:30,cap:1,kff:0.8,kdz:160,irel:40,ag:2};   // 11-20 拆护圈 39 g：P/D/I ×0.8   // Claude 推荐（11-16，49 g 带保护圈）
 $('#ptab').innerHTML=PDEF.map(p=>'<div class="prow" data-k="'+p.k+'"><b>'+p.n+'</b><button data-d="-1">−</button><span class="pv">--</span><button data-d="1">+</button><span class="ph">'+p.h+'</span></div>').join('');
 function ptabShow(){ PDEF.forEach(p=>{ const v=BASE[p.k], e=$('.prow[data-k="'+p.k+'"] .pv');
     if(p.opts){ const i=p.opts.indexOf(v); e.textContent=i>=0?p.lab[i]:'--'; } else e.textContent=(typeof v==='number')?v.toFixed(p.d):'--'; });
@@ -1193,14 +1210,15 @@ async function fcLoad(n){
     const st=(a,m)=>{const x=a.filter((v,i)=>m[i]); if(!x.length) return 0; const mu=x.reduce((p,q)=>p+q,0)/x.length; return Math.sqrt(x.reduce((p,q)=>p+(q-mu)*(q-mu),0)/x.length);};
     const quiet=sr.map((v,i)=>Math.abs(v)<0.5&&Math.abs(sp[i])<0.5), stR=sr.map(v=>Math.abs(v)>1), stP=sp.map(v=>Math.abs(v)>1);
     const ratio=(tg,ac,m)=>{let a=0,b=0; tg.forEach((v,i)=>{ if(m[i]){a+=Math.abs(ac[i]);b+=Math.abs(v);} }); return b?a/b:0;};
-    let nMax=0; for(let i=i0;i<=i1;i++){ if(Math.max(D2.o1[i],D2.o2[i],D2.o3[i],D2.o4[i])>=940) nMax++; } const oMax=nMax/Math.max(1,i1-i0+1);   // 任一电机顶到上限
-    const cells=[['空中',(t[t.length-1]-t[0]).toFixed(1)+' s'],['不打杆晃动','横滚 ±'+st(ro,quiet).toFixed(1)+'° · 俯仰 ±'+st(pi,quiet).toFixed(1)+'°'],
-      ['打杆跟到目标的','横滚 '+Math.round(100*ratio(sr,ro,stR))+'% · 俯仰 '+Math.round(100*ratio(sp,pi,stP))+'%'],
-      ['反应延迟','横滚 '+fcLag(sr,ro)+' ms · 俯仰 '+fcLag(sp,pi)+' ms'],
-      ['有电机顶满',Math.round(100*oMax)+'% 的时间'],['电池最低',Math.min(...vb).toFixed(2)+' V']];
-    if(D2.usb&&D2.usb.some(v=>v===1)) cells.push(['⚠ 插着 USB','数据线会拉着飞机，姿态/高度数据要打折']);
-    if($('#fcInfo').dataset.crash){ cells.push(['结尾','翻/撞了（之后不计）']); delete $('#fcInfo').dataset.crash; }
-    $('#fcM').innerHTML=cells.map(c=>'<div>'+c[0]+'<b>'+c[1]+'</b></div>').join('');
+    let oTop=0; for(let i=i0;i<=i1;i++) oTop=Math.max(oTop,D2.o1[i],D2.o2[i],D2.o3[i],D2.o4[i]); const capV=oTop>=940?oTop-8:1e9;   // 上限 950 或 1000 都认
+    let nMax=0; for(let i=i0;i<=i1;i++){ if(Math.max(D2.o1[i],D2.o2[i],D2.o3[i],D2.o4[i])>=capV) nMax++; } const oMax=nMax/Math.max(1,i1-i0+1);   // 任一电机顶到上限
+    const cells=[['空中',(t[t.length-1]-t[0]).toFixed(1)+' s'],['不打杆晃动','±'+st(ro,quiet).toFixed(1)+'° / ±'+st(pi,quiet).toFixed(1)+'°'],
+      ['打杆跟到','横'+Math.round(100*ratio(sr,ro,stR))+'% 俯'+Math.round(100*ratio(sp,pi,stP))+'%'],
+      ['延迟',fcLag(sr,ro)+' / '+fcLag(sp,pi)+' ms'],
+      ['电机顶满',Math.round(100*oMax)+'%',oMax>0.3],['电池最低',Math.min(...vb).toFixed(2)+' V']];
+    if(D2.usb&&D2.usb.some(v=>v===1)) cells.push(['⚠ USB','插着线，数据打折',1]);
+    if($('#fcInfo').dataset.crash){ cells.push(['结尾','翻/撞（之后不计）',1]); delete $('#fcInfo').dataset.crash; }
+    $('#fcM').innerHTML=cells.map(c=>'<div'+(c[2]?' class="warn"':'')+'>'+c[0]+'<b>'+c[1]+'</b></div>').join('');
     $('#fcInfo').textContent=n.replace('.csv','');
   }catch(e){ $('#fcInfo').textContent='读不到这次记录'; }
 }
@@ -1221,6 +1239,7 @@ fcList(true);
   [...s4.children].forEach(el=>{ if(el.tagName!=='H2') par.appendChild(el); });
   [...s6.children].forEach(el=>crv.appendChild(el));
   const h=crv.querySelector('h2'); if(h) h.remove();
+  par.querySelectorAll('.prow .ph').forEach(e=>e.title=e.textContent);   // 说明只显示一行，鼠标停上去看全文
   ['#fcR','#fcP'].forEach(s=>$(s).setAttribute('viewBox','0 0 1000 150')); $('#fcO').setAttribute('viewBox','0 0 1000 110');
   function show(t){
     $$('#ftabs button').forEach(b=>b.classList.toggle('cur',b.dataset.t===t));
@@ -1244,7 +1263,7 @@ $('#ttOk').addEventListener('click',()=>$('#ttOk').classList.toggle('on'));
 function ttStop(){ if(TT.pm) send('H,0'); TT.pm=0; $$('#ttLv button').forEach(b=>b.classList.remove('cur')); $('#ttSt').textContent='没在转'; }
 function ttStart(p){
   if(!S.on){toast('先连接',1);return;} if(st.armed){toast('先上锁',1);return;}
-  if(!$('#ttOk').classList.contains('on')){toast('先确认已倒置粘牢',1);$('#ttOk').classList.add('flash');setTimeout(()=>$('#ttOk').classList.remove('flash'),500);return;}
+  if(!$('#ttOk').classList.contains('on')){toast('先确认已卡牢',1);$('#ttOk').classList.add('flash');setTimeout(()=>$('#ttOk').classList.remove('flash'),500);return;}
   TT.pm=p; TT.t0=performance.now(); TT.vs=[]; send('H,'+p+','+TT.ch);
   $$('#ttLv button').forEach(b=>b.classList.toggle('cur',+b.dataset.p===p)); $('#ttG').value=''; $('#ttG').focus();
 }
@@ -1259,7 +1278,7 @@ setInterval(()=>{
   $('#ttSt').textContent=(TT.pm/10)+'% 转了 '+el.toFixed(0)+' 秒';
 },300);
 function ttRec(){
-  const g=parseFloat($('#ttG').value); if(!(g>=0)&&!(g<0)){toast('先输入秤读数',1);return;}
+  const g=Math.abs(parseFloat($('#ttG').value)); if(!(g>=0)){toast('先输入秤读数',1);return;}   // 正放时秤读数是负的
   if(!TT.pm){toast('先点一档转起来',1);return;}
   const el=(performance.now()-TT.t0)/1000, rec=TT.vs.filter(x=>x[0]>el-1.5).map(x=>x[1]);
   const mv=Math.round(rec.length?rec.reduce((a,b)=>a+b,0)/rec.length:D.vb);
@@ -1281,7 +1300,7 @@ function ttDraw(){
   for(let i=0;i<=4;i++){const y=B-(B-T)*i/4;h+='<line x1="'+L+'" y1="'+y+'" x2="'+R+'" y2="'+y+'" stroke="#2a333e"/><text x="'+(L-6)+'" y="'+(y+4)+'" fill="#8a97a6" font-size="10" text-anchor="end">'+Math.round(gmax*i/4)+'</text>';}
   for(let p=0;p<=100;p+=20){const x=L+(R-L)*p/100;h+='<text x="'+x+'" y="'+(B+16)+'" fill="#8a97a6" font-size="10" text-anchor="middle">'+p+'%</text>';}
   h+='<text x="'+L+'" y="10" fill="#8a97a6" font-size="10">推力 g</text>';
-  const wy=B-(B-T)*49.3/gmax; h+='<line x1="'+L+'" y1="'+wy+'" x2="'+R+'" y2="'+wy+'" stroke="#f0b429" stroke-dasharray="4 4"/><text x="'+(R-2)+'" y="'+(wy-4)+'" fill="#f0b429" font-size="10" text-anchor="end">机重 49.3 g</text>';
+  const wy=B-(B-T)*39/gmax; h+='<line x1="'+L+'" y1="'+wy+'" x2="'+R+'" y2="'+wy+'" stroke="#f0b429" stroke-dasharray="4 4"/><text x="'+(R-2)+'" y="'+(wy-4)+'" fill="#f0b429" font-size="10" text-anchor="end">机重 39 g</text>';
   const MC=['','#3cc2cc','#ef7a64','#f0b429','#b07cff'];
   TT.rows.forEach(r=>{const x=L+(R-L)*r.pm/1000,y=B-(B-T)*r.g/gmax,c=r.ch?MC[r.ch]:(r.mv>=3900?'#2fc47a':r.mv>=3700?'#3b9eff':'#ff4d4f');h+=r.ch?'<rect x="'+(x-4)+'" y="'+(y-4)+'" width="8" height="8" fill="'+c+'"/>':'<circle cx="'+x+'" cy="'+y+'" r="4" fill="'+c+'"/>';});
   h+='<text x="'+R+'" y="'+(B+30)+'" fill="#8a97a6" font-size="9" text-anchor="end">圆 = 四个一起（绿 ≥3.9 V 蓝 3.7–3.9 红 &lt;3.7） · 方 = 单测 <tspan fill="#3cc2cc">M1</tspan> <tspan fill="#ef7a64">M2</tspan> <tspan fill="#f0b429">M3</tspan> <tspan fill="#b07cff">M4</tspan></text>';

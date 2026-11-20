@@ -164,7 +164,7 @@ async function get(p){var ac=new AbortController(),to=setTimeout(function(){ac.a
 /* ---------- 状态 ---------- */
 var S={on:false,armed:false,f:0,vb:0,roll:0,pitch:0,yaw:0,o:[0,0,0,0],rssi:0,usb:false};
 var C={cmd:0,target:0,landing:false,r:0,p:0,y:0,mine:false,hov:0,hovN:0,lt:0,lf:0,touch:0};
-var busy=false, tk=lsGet('tk2',70), lastRx=0, seq=0, ws=null, armT=0, trimDirty=false, P=null, vbF=0, pctF=-1;
+var busy=false, tk=lsGet('tk3',52), lastRx=0, seq=0, ws=null, armT=0, trimDirty=false, P=null, vbF=0, pctF=-1;
 var FAULT={1:'IMU 异常',2:'信号断了',4:'倾斜太大',8:'电池没电'};
 
 /* ---------- WebSocket（端口 81）：每 50 ms 发杆量，回遥测；0.9 秒收不到飞机自己停 ---------- */
@@ -290,7 +290,7 @@ window.addEventListener('pagehide',function(){if(S.armed)estop();});
   ['pointerup','pointercancel','lostpointercapture'].forEach(function(ev){el.addEventListener(ev,end);});
 })();
 function nudge(d){
-  if(!S.armed||!C.mine){tk=Math.max(30,Math.min(90,tk+d));lsSet('tk2',tk);showK();toast('起飞油门 '+tk+'%');return;}   // 没起飞：调起飞油门；飞行中：调当前油门
+  if(!S.armed||!C.mine){tk=Math.max(30,Math.min(90,tk+d));lsSet('tk3',tk);showK();toast('起飞油门 '+tk+'%');return;}   // 没起飞：调起飞油门；飞行中：调当前油门
   C.landing=false;C.target=Math.max(0,Math.min(100,Math.round(C.target)+d));}
 $('#tm').onclick=function(){nudge(-1);};$('#tp').onclick=function(){nudge(1);};
 
@@ -314,8 +314,8 @@ yawBtn('#yl',-0.4);yawBtn('#yr',0.4);
 /* ---------- 设置 ---------- */
 function showK(){txt($('#kv'),tk+'%');}
 showK();
-$('#km').onclick=function(){tk=Math.max(30,tk-1);lsSet('tk2',tk);showK();};
-$('#kp').onclick=function(){tk=Math.min(90,tk+1);lsSet('tk2',tk);showK();};
+$('#km').onclick=function(){tk=Math.max(30,tk-1);lsSet('tk3',tk);showK();};
+$('#kp').onclick=function(){tk=Math.min(90,tk+1);lsSet('tk3',tk);showK();};
 function trimShow(){txt($('#trimT'),P?'现在：前后 '+(+P.trimP).toFixed(1)+'° · 左右 '+(+P.trimR).toFixed(1)+'°':'读取中…');}
 $('#cfg').onclick=async function(){$('#sheet').hidden=false;trimShow();
   var p=await get('/api/params');if(p&&typeof p.trimR==='number'){P=p;trimShow();}

@@ -1,0 +1,221 @@
+<title>小飞机固件体检</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* 布局：像一张示波器体检单 —— 顶部结论条，下面按“时间 → 抖动 → 内存 → 对比 → 下一步”往下读 */
+:root{
+  --bg:#f3f6f7; --panel:#ffffff; --fg:#14202a; --dim:#5d6b77; --line:#d9e1e6;
+  --acc:#0b7a83; --acc2:#c2412d; --ok:#2f855a; --warn:#b7791f; --bad:#c2412d;
+  --imu:#0b7a83; --ctl:#5b4bb7; --oth:#8a97a6; --free:#e3eaee;
+  --disp:"Space Grotesk",system-ui,sans-serif; --body:"Inter",system-ui,sans-serif; --mono:"JetBrains Mono",ui-monospace,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0e1419; --panel:#151d24; --fg:#e6edf2; --dim:#8a97a6; --line:#26323c;
+  --acc:#3cc2cc; --acc2:#ef7a64; --ok:#48bb78; --warn:#f0b429; --bad:#ef7a64;
+  --imu:#3cc2cc; --ctl:#9d8cff; --oth:#6b7886; --free:#1f2a33; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0e1419; --panel:#151d24; --fg:#e6edf2; --dim:#8a97a6; --line:#26323c;
+  --acc:#3cc2cc; --acc2:#ef7a64; --ok:#48bb78; --warn:#f0b429; --bad:#ef7a64;
+  --imu:#3cc2cc; --ctl:#9d8cff; --oth:#6b7886; --free:#1f2a33; color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font-family:var(--body);line-height:1.55;font-size:15px}
+.wrap{max-width:1040px;margin:0 auto;padding-block:28px 48px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:22px}
+h1{font-family:var(--disp);font-size:30px;margin:0;text-wrap:balance}
+h2{font-family:var(--disp);font-size:19px;margin:0 0 4px;text-wrap:balance}
+.sub{color:var(--dim);margin:2px 0 0}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.tile{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.tile .k{font-size:12px;color:var(--dim);letter-spacing:.02em}
+.tile .v{font-family:var(--mono);font-size:22px;font-weight:600;font-variant-numeric:tabular-nums}
+.tile .v small{font-size:13px;color:var(--dim);font-weight:400}
+.tile .n{font-size:12px;color:var(--dim)}
+.pill{display:inline-block;font-size:11px;padding:1px 7px;border-radius:9px;font-weight:600;vertical-align:2px}
+.pill.ok{background:color-mix(in srgb,var(--ok) 18%,transparent);color:var(--ok)}
+.pill.warn{background:color-mix(in srgb,var(--warn) 20%,transparent);color:var(--warn)}
+.pill.bad{background:color-mix(in srgb,var(--bad) 18%,transparent);color:var(--bad)}
+section{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:22px}
+@media (max-width:760px){.two{grid-template-columns:1fr}}
+svg{display:block;width:100%;height:auto}
+svg text{fill:var(--dim);font-family:var(--mono);font-size:11px}
+.note{font-size:13px;color:var(--dim);margin:0;max-width:72ch}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:var(--dim)}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+.tblw{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:13px;min-width:560px}
+th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line)}
+th{color:var(--dim);font-weight:600;font-size:12px}
+td.us{font-weight:600;color:var(--acc)}
+.find{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px 12px;align-items:start}
+.find b{font-family:var(--disp)}
+.find p{margin:0;font-size:14px}
+.mem{display:flex;flex-direction:column;gap:12px}
+.mrow .mt{display:flex;justify-content:space-between;font-size:13px;gap:8px}
+.bar{height:12px;border-radius:6px;background:var(--free);overflow:hidden;display:flex;margin-top:4px}
+.bar span{display:block;height:100%}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>小飞机固件体检</h1>
+    <p class="sub">固件 <span class="mono" id="fw"></span> · ESP32-S3 <span class="mono" id="mhz"></span> MHz 双核 · 2026-11-20 实测（台上压力测试 + 11-19 那次飞行的 1 kHz 黑匣子；“飞行中”两张图是修复前的旧固件）</p>
+  </header>
+
+  <div class="tiles" id="tiles"></div>
+
+  <section>
+    <h2>卡顿压力测试：三版固件对比</h2>
+    <p class="note">飞机固定在推力架上，每段 12 秒，电机 40%。“卡顿”= 两拍之间超过 1.5 ms（正常是 1 ms）。A = 旧版（节拍定时器跑在 WiFi 那个核上）；B = 节拍改成 core 1 的硬件定时器；C = B + 控制任务优先级 5→20（现在飞机里的版本）。</p>
+    <div class="tblw"><table id="abt"></table></div>
+    <svg id="abg" viewBox="0 0 900 230" role="img" aria-label="各段最长卡顿"></svg>
+    <div class="legend"><span><i style="background:var(--acc2)"></i>A 旧版</span><span><i style="background:var(--warn)"></i>B 硬件定时器</span><span><i style="background:var(--acc)"></i>C 硬件定时器 + 高优先级（当前）</span><span>纵轴是对数刻度：每格 ×10</span></div>
+  </section>
+
+  <section>
+    <h2>每 1 ms 里时间花在哪</h2>
+    <p class="note">传感器拍子 1 kHz（每 1 ms 一拍），控制计算每两拍做一次（500 Hz）。条越短越好，超过 1000 µs 就会挤掉下一拍。</p>
+    <svg id="budget" viewBox="0 0 900 190" role="img" aria-label="1 毫秒时间预算"></svg>
+    <div class="legend"><span><i style="background:var(--imu)"></i>读 IMU（I2C 等数据）</span><span><i style="background:var(--ctl)"></i>控制计算（姿态估计 + PID + 混控）</span><span><i style="background:var(--oth)"></i>滤波、黑匣子等</span></div>
+  </section>
+
+  <div class="two">
+    <section>
+      <h2>拍子准不准</h2>
+      <p class="note">每一拍离标准 1000 µs 差多少。台上静止时由固件自己统计；飞行中用黑匣子时间戳算（时间戳打在读完 IMU 之后，所以也包含 I2C 耗时的波动）。</p>
+      <svg id="hist" viewBox="0 0 460 250" role="img" aria-label="节拍偏差分布"></svg>
+      <div class="legend"><span><i style="background:var(--acc)"></i>台上静止</span><span><i style="background:var(--acc2)"></i>飞行中</span></div>
+    </section>
+    <section>
+      <h2>飞行中连续 240 拍（修复前）</h2>
+      <p class="note">间隔一长一短交替（约 820 / 1180 µs），平均仍是 1000 µs，也就是 1 kHz 没掉。偶尔有一拍拖到 1.5 ms 以上。</p>
+      <svg id="seq" viewBox="0 0 460 250" role="img" aria-label="飞行中拍子间隔"></svg>
+    </section>
+  </div>
+
+  <section>
+    <h2>内存和存储</h2>
+    <div class="mem" id="mem"></div>
+  </section>
+
+  <section>
+    <h2>和成熟飞控比</h2>
+    <div class="tblw"><table>
+      <thead><tr><th>指标</th><th>我们（v21）</th><th>Crazyflie 2.1</th><th>ESP-Drone</th><th>Betaflight（F4 飞控）</th></tr></thead>
+      <tbody>
+        <tr><td>陀螺采样</td><td class="us">1 kHz</td><td>1 kHz</td><td>1 kHz</td><td>8 kHz（8 kHz 陀螺 / 4 kHz PID）</td></tr>
+        <tr><td>角速度环</td><td class="us">500 Hz</td><td>500 Hz</td><td>500 Hz</td><td>4 kHz</td></tr>
+        <tr><td>拍子来源</td><td class="us">1 kHz 定时器</td><td>IMU 数据就绪中断</td><td>IMU 数据就绪中断</td><td>陀螺中断 / SPI DMA</td></tr>
+        <tr><td>IMU 总线</td><td class="us">I2C 400 kHz</td><td>SPI</td><td>I2C</td><td>SPI（8~20 MHz）</td></tr>
+        <tr><td>读一次 IMU</td><td class="us">≈ 0.48 ms</td><td>≈ 0.05 ms</td><td>≈ 0.4 ms</td><td>≈ 0.02 ms（DMA，不占 CPU）</td></tr>
+        <tr><td>控制计算</td><td class="us">0.16 ms</td><td>—</td><td>—</td><td>—</td></tr>
+        <tr><td>黑匣子</td><td class="us">1 kHz · 30 s（PSRAM）</td><td>按需日志</td><td>无</td><td>1~2 kHz（闪存）</td></tr>
+      </tbody>
+    </table></div>
+    <p class="note">别家只列公开资料里能确定的数，“—”是没有公开数据。小机用 I2C 的 IMU 很正常，但它是我们 CPU 时间最大的一块。</p>
+  </section>
+
+  <section>
+    <h2>结论和下一步</h2>
+    <div class="find" id="find"></div>
+  </section>
+</div>
+
+<script>
+const D={"seg": [1203, 794, 1213, 790, 1244, 761, 1215, 778, 1210, 790, 1237, 762, 1210, 788, 1217, 786, 1210, 1238, 1663, 721, 1608, 480, 1270, 645, 1031, 574, 1016, 607, 1110, 896, 1164, 836, 1138, 802, 1185, 806, 1199, 802, 1194, 805, 1199, 803, 1192, 806, 1198, 803, 1194, 805, 1199, 802, 1190, 849, 1181, 778, 1205, 811, 1183, 817, 1188, 848, 1159, 803, 1627, 596, 1615, 827, 1380, 465, 1115, 465, 1133, 805, 1197, 932, 1189, 660, 1202, 789, 1219, 781, 1209, 788, 1224, 774, 1221, 775, 1233, 771, 1220, 776, 1234, 780, 1222, 768, 1225, 775, 1222, 778, 1226, 774, 1224, 801, 1483, 772, 1561, 796, 1139, 482, 1019, 743, 1203, 778, 1196, 803, 1195, 803, 1197, 798, 1204, 801, 1199, 796, 1203, 802, 1198, 822, 1211, 781, 1183, 815, 1248, 793, 1150, 809, 1181, 807, 1484, 558, 1701, 831, 1527, 506, 1377, 463, 1136, 473, 1176, 784, 1216, 784, 1248, 752, 1213, 787, 1300, 688, 1252, 753, 1236, 760, 1240, 764, 1243, 753, 1241, 763, 1236, 760, 1304, 879, 1189, 648, 1215, 789, 1209, 773, 1215, 794, 1551, 754, 1593, 802, 1318, 476, 1007, 510, 1164, 804, 1199, 802, 1197, 803, 1198, 808, 1209, 785, 1199, 801, 1203, 797, 1201, 799, 1201, 799, 1199, 798, 1208, 795, 1201, 799, 1201, 800, 1199, 806, 1201, 1187, 1587, 715, 1639, 681, 1258, 738, 1221, 776, 1229, 772, 1223, 989, 1182, 686, 1210, 798, 1159, 788, 1196, 787, 1184, 797, 1215, 784], "fl": [142, 223, 513, 5101, 8153, 1051], "idle": [40539, 1353, 305, 318, 273, 33], "perf": {"fw": "flight-v22", "up": 227, "mhz": 240, "hz": 1000, "crate": 500, "tImu": 472, "tImuMax": 705, "tCtl": 143, "tCtlMax": 278, "tStep": 559, "tStepMax": 861, "jit": 4, "jh": [209701, 2247, 3949, 6599, 3654, 15], "i2cFail": 0, "heap": 226776, "heapMin": 215604, "heapTot": 346228, "ps": 709388, "psTot": 2097152, "sketch": 1159968, "sketchFree": 1966080, "stkCtl": 2348, "stkLoop": 3544, "lbN": 30000, "rssi": -52, "tsrc": 1, "nTick": 226303, "nGap": 14, "gapMax": 0, "gapAgo": 0, "wakeMax": 254, "nDefer": 0, "arm": 0, "phase": "空闲"}, "big": [2148, 2164, 2195, 8999, 10853], "p": [473.0, 1023.0, 1662.0, 1815.1780000000235], "ab": {"phases": ["空闲", "WiFi 狂发", "电机转", "电机转 + WiFi", "电机转 + 狂下载黑匣子", "空闲 + 存参数"], "A": [[8, 74369, 520, 0.703], [142, 2597, 1212, 13.69], [6, 10327, 657, 1.098], [129, 9653, 1191, 13.887], [378, 10819, 1335, 23.717], [21, 95202, 886, 0.882]], "B": [[0, 0, 165, null], [3, 2939, 843, null], [0, 0, 90, null], [2, 2269, 776, null], [43, 102526, 991, null], null], "C": [[0, 0, 254, 0.016], [0, 0, 499, 2.105], [0, 0, 214, 0.008], [0, 0, 602, 4.225], [12, 4721, 988, 9.566], [0, 0, 198, 0.0]]}};
+const P=D.perf, $=s=>document.querySelector(s), NS='http://www.w3.org/2000/svg';
+$('#fw').textContent=P.fw; $('#mhz').textContent=P.mhz;
+const busy=Math.round((P.tImu+P.tCtl/2+(P.tStep-P.tImu-P.tCtl/2))/10);
+const tiles=[
+  ['传感器频率',P.hz+'<small> Hz</small>','目标 1000',P.hz>=990?'ok':'bad'],
+  ['控制频率',P.crate+'<small> Hz</small>','角速度环','ok'],
+  ['CPU 占用（控制核）',busy+'<small> %</small>','平均每拍 '+P.tStep+' µs',busy<70?'ok':'warn'],
+  ['读 IMU 一次',P.tImu+'<small> µs</small>','占一拍的 '+Math.round(P.tImu/10)+'%','warn'],
+  ['控制计算',P.tCtl+'<small> µs</small>','最慢 '+P.tCtlMax+' µs','ok'],
+  ['最慢一拍',P.tStepMax+'<small> µs</small>','超过 1000 会挤掉下一拍',P.tStepMax>1000?'warn':'ok'],
+  ['I2C 读失败',P.i2cFail+'<small> 次</small>','开机 '+P.up+' s 以来',P.i2cFail?'bad':'ok'],
+  ['WiFi 信号',P.rssi+'<small> dBm</small>','-67 以上算好',P.rssi>-67?'ok':'warn'],
+];
+const lab={ok:'正常',warn:'可优化',bad:'有问题'};
+$('#tiles').innerHTML=tiles.map(t=>'<div class="tile"><span class="k">'+t[0]+' <span class="pill '+t[3]+'">'+lab[t[3]]+'</span></span><span class="v">'+t[1]+'</span><span class="n">'+t[2]+'</span></div>').join('');
+
+// 1 ms 预算条
+(function(){
+  const s=$('#budget'),L=150,R=880,X=v=>L+(R-L)*v/1300;
+  const oth=Math.max(5,P.tStep-P.tImu-P.tCtl/2);
+  const rows=[['只读传感器的拍',[[P.tImu,'var(--imu)'],[oth,'var(--oth)']]],['读传感器 + 控制',[[P.tImu,'var(--imu)'],[P.tCtl,'var(--ctl)'],[oth,'var(--oth)']]],['最慢的一拍',[[P.tStepMax,'var(--bad)']]]];
+  let h='';
+  [0,250,500,750,1000,1250].forEach(v=>{h+='<line x1="'+X(v)+'" x2="'+X(v)+'" y1="14" y2="160" stroke="var(--line)"/><text x="'+X(v)+'" y="178" text-anchor="middle">'+v+' µs</text>';});
+  h+='<line x1="'+X(1000)+'" x2="'+X(1000)+'" y1="8" y2="160" stroke="var(--bad)" stroke-dasharray="4 3" stroke-width="1.5"/><text x="'+(X(1000)+4)+'" y="12" style="fill:var(--bad)">1 ms 一拍</text>';
+  rows.forEach((r,i)=>{const y=26+i*46;let x=0;h+='<text x="'+(L-10)+'" y="'+(y+19)+'" text-anchor="end" style="fill:var(--fg)">'+r[0]+'</text>';
+    r[1].forEach(seg=>{h+='<rect x="'+X(x)+'" y="'+y+'" width="'+(X(x+seg[0])-X(x))+'" height="28" rx="3" fill="'+seg[1]+'"/>';x+=seg[0];});
+    h+='<text x="'+(X(x)+6)+'" y="'+(y+19)+'" style="fill:var(--fg)">'+Math.round(x)+' µs</text>';});
+  s.innerHTML=h;
+})();
+
+// 偏差分布
+(function(){
+  const s=$('#hist'),B=['<20','20–50','50–100','100–200','200–500','>500'],L=40,R=450,T=14,Bt=210;
+  const pc=a=>{const n=a.reduce((p,q)=>p+q,0);return a.map(v=>100*v/n);};
+  const A=pc(D.idle),F=pc(D.fl),w=(R-L)/B.length;
+  let h='';[0,25,50,75,100].forEach(v=>{const y=Bt-(Bt-T)*v/100;h+='<line x1="'+L+'" x2="'+R+'" y1="'+y+'" y2="'+y+'" stroke="var(--line)"/><text x="'+(L-6)+'" y="'+(y+4)+'" text-anchor="end">'+v+'%</text>';});
+  B.forEach((b,i)=>{const x=L+i*w;[[A[i],'var(--acc)',0],[F[i],'var(--acc2)',1]].forEach(([v,c,k])=>{const bh=(Bt-T)*v/100,bx=x+6+k*(w/2-6);
+      h+='<rect x="'+bx+'" y="'+(Bt-bh)+'" width="'+(w/2-8)+'" height="'+Math.max(bh,1)+'" rx="2" fill="'+c+'"/>';
+      if(v>=1)h+='<text x="'+(bx+(w/2-8)/2)+'" y="'+(Bt-bh-4)+'" text-anchor="middle">'+Math.round(v)+'</text>';});
+    h+='<text x="'+(x+w/2)+'" y="'+(Bt+16)+'" text-anchor="middle">'+b+'</text>';});
+  h+='<text x="'+((L+R)/2)+'" y="244" text-anchor="middle">离 1000 µs 的偏差（µs）</text>';
+  s.innerHTML=h;
+})();
+
+// 飞行中 240 拍
+(function(){
+  const s=$('#seq'),a=D.seg,L=44,R=450,T=14,Bt=210,lo=400,hi=1800,X=i=>L+(R-L)*i/(a.length-1),Y=v=>Bt-(Bt-T)*(Math.min(hi,Math.max(lo,v))-lo)/(hi-lo);
+  let h='';[400,700,1000,1300,1600].forEach(v=>{h+='<line x1="'+L+'" x2="'+R+'" y1="'+Y(v)+'" y2="'+Y(v)+'" stroke="var(--line)"/><text x="'+(L-6)+'" y="'+(Y(v)+4)+'" text-anchor="end">'+v+'</text>';});
+  h+='<line x1="'+L+'" x2="'+R+'" y1="'+Y(1000)+'" y2="'+Y(1000)+'" stroke="var(--acc)" stroke-dasharray="4 3"/>';
+  h+='<polyline fill="none" stroke="var(--acc2)" stroke-width="1.2" points="'+a.map((v,i)=>X(i).toFixed(1)+','+Y(v).toFixed(1)).join(' ')+'"/>';
+  a.forEach((v,i)=>{if(v>1500)h+='<circle cx="'+X(i)+'" cy="'+Y(v)+'" r="3" fill="var(--bad)"/>';});
+  h+='<text x="'+((L+R)/2)+'" y="232" text-anchor="middle">第几拍（µs / 拍）</text>';
+  s.innerHTML=h;
+})();
+
+// 内存
+(function(){
+  const k=v=>(v/1024).toFixed(0)+' KB', m=v=>(v/1048576).toFixed(2)+' MB';
+  const lbB=D.perf.lbN*42;
+  const R=[
+    ['内存（内部 RAM）',P.heapTot-P.heap,P.heapTot,k(P.heapTot-P.heap)+' 用 / '+k(P.heapTot)+'，最紧时还剩 '+k(P.heapMin),[[P.heapTot-P.heap,'var(--acc)']]],
+    ['外挂内存 PSRAM',P.psTot-P.ps,P.psTot,'黑匣子 '+m(lbB)+' + 其它 '+m(P.psTot-P.ps-lbB)+' / '+m(P.psTot),[[lbB,'var(--ctl)'],[P.psTot-P.ps-lbB,'var(--acc)']]],
+    ['程序空间（闪存）',P.sketch,P.sketchFree,m(P.sketch)+' / '+m(P.sketchFree)+'（OTA 分区）',[[P.sketch,'var(--acc)']]],
+    ['控制任务的栈',4096-P.stkCtl,4096,(4096-P.stkCtl)+' B 用过 / 4096 B',[[4096-P.stkCtl,'var(--acc)']]],
+  ];
+  $('#mem').innerHTML=R.map(r=>{const pc=Math.round(100*r[1]/r[2]);
+    return '<div class="mrow"><div class="mt"><span>'+r[0]+' <span class="pill '+(pc<75?'ok':'warn')+'">'+pc+'%</span></span><span class="mono" style="color:var(--dim)">'+r[3]+'</span></div><div class="bar">'+r[4].map(s=>'<span style="width:'+(100*s[0]/r[2]).toFixed(1)+'%;background:'+s[1]+'"></span>').join('')+'</div></div>';}).join('');
+})();
+
+// A/B/C 对比
+(function(){
+  const S=D.ab, V=[['A','var(--acc2)'],['B','var(--warn)'],['C','var(--acc)']];
+  const cell=(r,i)=>r?(r[0]===0?'<span class="pill ok">0 次</span>':'<span class="pill '+(r[1]>5000?'bad':'warn')+'">'+r[0]+' 次 · 最长 '+(r[1]/1000).toFixed(1)+' ms</span>'):'<span style="color:var(--dim)">没测到</span>';
+  $('#abt').innerHTML='<thead><tr><th>负载</th><th>A 旧版</th><th>B 硬件定时器</th><th>C 当前</th></tr></thead><tbody>'+
+    S.phases.map((p,i)=>'<tr><td>'+p+'</td><td>'+cell(S.A[i])+'</td><td>'+cell(S.B[i])+'</td><td>'+cell(S.C[i])+'</td></tr>').join('')+'</tbody>';
+  const s=$('#abg'),L=60,R=890,T=12,Bt=180,gw=(R-L)/S.phases.length,lg=v=>Math.log10(Math.max(1000,v)),Y=v=>Bt-(Bt-T)*(lg(v)-3)/2.1;
+  let h='';[[1000,'1 ms'],[10000,'10 ms'],[100000,'100 ms']].forEach(([v,t])=>{h+='<line x1="'+L+'" x2="'+R+'" y1="'+Y(v)+'" y2="'+Y(v)+'" stroke="var(--line)"/><text x="'+(L-6)+'" y="'+(Y(v)+4)+'" text-anchor="end">'+t+'</text>';});
+  S.phases.forEach((p,i)=>{const x0=L+i*gw+10,bw=(gw-20)/3;
+    V.forEach(([k,c],j)=>{const r=S[k][i]; if(!r) return; const v=Math.max(1000,r[1]||1000),y=Y(v);
+      h+='<rect x="'+(x0+j*bw)+'" y="'+y+'" width="'+(bw-4)+'" height="'+Math.max(2,Bt-y)+'" rx="2" fill="'+c+'"/>';
+      if(r[1]>1500) h+='<text x="'+(x0+j*bw+(bw-4)/2)+'" y="'+(y-4)+'" text-anchor="middle">'+(r[1]>=10000?Math.round(r[1]/1000):(r[1]/1000).toFixed(1))+'</text>';});
+    h+='<text x="'+(x0+(gw-20)/2)+'" y="'+(Bt+18)+'" text-anchor="middle" style="fill:var(--fg)">'+p+'</text>';});
+  h+='<text x="'+L+'" y="222" >每段最长的一次卡顿（ms），贴底 = 没有卡顿</text>';
+  s.innerHTML=h;
+})();
+
+// 结论
+$('#find').innerHTML=[
+  ['ok','卡顿的根源找到并修好了','旧版 1 kHz 节拍的定时器跑在 WiFi 那个核上，WiFi 一忙信号就送晚，转电机 + 收遥控时 12 秒卡 129 次、最长 9.7 ms，和 11-19 飞行里那次 10.8 ms 对得上。v22 改成 core 1 的硬件定时器中断，再把控制任务优先级提到 20：同样负载 0 次卡顿；另外 60 秒模拟飞行（电机 + 50 Hz 遥控 + 网页轮询）也是 0 次。'],
+  ['ok','飞行中不再写闪存','写闪存时两个核都会停。v22 起飞行中点“保存参数”会先记下来，落地上锁后再写。'],
+  ['warn','只剩一种情况会小卡','电机转着的同时狂下载黑匣子：12 秒 12 次、最长 4.7 ms。飞行中黑匣子本来就不让下载，正常不会遇到。'],
+  ['ok','控制核还有余量','平均每拍用 '+P.tStep+' µs，剩约 40%。控制计算本身只要 '+P.tCtl+' µs，算法再加东西也装得下。'],
+  ['warn','读 IMU 是最大一块','每拍 '+P.tImu+' µs 在等 I2C（400 kHz 已经是这颗 IMU 的上限）。要省时间得改成“发起读取后先做别的事”（异步 / DMA），或改用 SPI 的 IMU（要改板子），目前不急。'],
+  ['warn','WiFi 忙时拍子会抖','卡顿没了，但 WiFi 忙时约 2~4% 的拍子会偏 200 µs 以上（单拍偶尔要 1.3 ms，WiFi 和控制核抢闪存缓存）。控制用的是实际测到的时间间隔，这种抖动对姿态影响很小。下次飞完用新统计核对。'],
+  ['ok','内存、程序空间、I2C 都健康','I2C 读失败 0 次；内存用了约三分之一；程序 1.15 MB，离 1.97 MB 上限还早；控制任务的栈只用了约 40%。'],
+].map(f=>'<span class="pill '+f[0]+'">'+lab[f[0]]+'</span><p><b>'+f[1]+'</b>　'+f[2]+'</p>').join('');
+</script>

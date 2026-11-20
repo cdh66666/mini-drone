@@ -29,12 +29,63 @@ class CamRec:
         try: idx = int(open(os.path.join(HERE, "camera.txt")).read().strip())
         except Exception: pass
         cap = cv2.VideoCapture(idx, cv2.CAP_DSHOW)
-        cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
+        # 11-20：DSHOW 要先定尺寸和帧率、最后再设 MJPG，否则会落到 YUY2 的 10 帧模式
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280); cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
         cap.set(cv2.CAP_PROP_FPS, 30)
+        cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
+        cap.set(cv2.CAP_PROP_FPS, 30)
+        # 室内光线下自动曝光会把快门拉长到 1/10 s → 只剩 10 帧；固定短快门保证 30 帧、桨也不糊
+        cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.25); cap.set(cv2.CAP_PROP_EXPOSURE, -6)
+        try:
+            fc = int(cap.get(cv2.CAP_PROP_FOURCC)); self.mode = "".join(chr((fc >> 8 * i) & 255) for i in range(4)) + " %dx%d" % (cap.get(3), cap.get(4))
+        except Exception: pass
         return cv2, cap
 
+    def _run_ffmpeg(self, name):
+        """11-20：camera.txt 写设备名（如 2K Camera）→ 用 ffmpeg 直接取相机的 MJPG 流，真 30 帧、不重新压缩。"""
+        import cv2, subprocess, numpy as np
+        exe = "D:/codex/tools/ffmpeg/ffmpeg-8.1.2-full_build/bin/ffmpeg.exe"
+        while True:
+            p = subprocess.Popen([exe, "-hide_banner", "-loglevel", "error", "-f", "dshow", "-vcodec", "mjpeg", "-video_size", "1280x720",
+                                  "-framerate", "30", "-rtbufsize", "64M", "-i", "video=" + name, "-c:v", "copy", "-f", "image2pipe", "-"],
+                                 stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, bufsize=0)
+            self.status = "开着"; self.mode = "MJPG 1280x720 ffmpeg"
+            buf = b""; n, tn = 0, time.time()
+            while True:
+                chunk = p.stdout.read(65536)
+                if not chunk: break
+                buf += chunk
+                while True:
+                    a = buf.find(bytes([0xFF, 0xD8])); b = buf.find(bytes([0xFF, 0xD9]), a + 2)
+                    if a < 0 or b < 0: break
+                    jpg = buf[a:b + 2]; buf = buf[b + 2:]; now = time.time(); n += 1
+                    if now - tn > 2: self.fps = n / (now - tn); n, tn = 0, now
+                    try:
+                        f = cv2.imdecode(np.frombuffer(jpg, np.uint8), cv2.IMREAD_COLOR)
+                        self.dark = bool(f[::16, ::16].mean() < 4)
+                        self._track(cv2, f, now)
+                    except Exception: pass
+                    self._push(now, jpg)
+            self.status = "ffmpeg 断了，重开"; time.sleep(1)
+
+    def _push(self, now, jpg):
+        with self.lock:
+            self.last = (now, jpg)
+            if self.rec is not None:
+                self.rec["frames"].append((now, jpg))
+                if self.stop_at and now >= self.stop_at:
+                    r, self.rec, self.stop_at = self.rec, None, None
+                    threading.Thread(target=self._save, args=(r,), daemon=True).start()
+            else:
+                self.ring.append((now, jpg))
+                while self.ring and now - self.ring[0][0] > PRE:
+                    self.ring.popleft()
+
     def _run(self):
+        try:
+            name = open(os.path.join(HERE, "camera.txt"), encoding="utf-8").read().strip()
+            if name and not name.isdigit(): return self._run_ffmpeg(name)
+        except Exception: pass
         try:
             cv2, cap = self._open()
         except Exception as e:
@@ -194,7 +245,7 @@ class CamRec:
 
     def info(self):
         return {"status": self.status, "fps": round(self.fps, 1), "dark": self.dark,
-                "rec": self.rec is not None}
+                "rec": self.rec is not None, "mode": getattr(self, "mode", "")}
 
 
 class _Off:
@@ -215,7 +266,7 @@ CAM = None
 def enabled():
     """默认关。要开：在 camera.txt 里写摄像头编号（比如 0）"""
     try:
-        return open(os.path.join(HERE, "camera.txt")).read().strip().isdigit()
+        return bool(open(os.path.join(HERE, "camera.txt"), encoding="utf-8").read().strip())
     except Exception:
         return False
 
