@@ -428,10 +428,10 @@ nav button[data-s="4"],nav button[data-s="6"]{display:none}
         <button class="okb" id="arm">🔓 解锁</button>
         <button class="ghost" id="btnLand">⬇ 降落<small class="dim" style="font-size:12px;margin-left:4px">空格</small></button>
       </div>
-      <div class="amp"><span class="cap">方向幅度</span><input type="range" id="amp" min="0.04" max="0.6" step="0.02"><b id="ampTxt">--</b><button class="ghost" id="altBtn" title="定高：起飞 1 秒后接管，悬停推力自动辨识（随电量自动跟），松回原油门就刹住不升不降">定高 关</button><span class="dim" id="altTxt" style="font-size:12px"></span></div>
+      <div class="amp"><span class="cap">前后幅度</span><input type="range" id="amp" min="0.04" max="0.6" step="0.02"><b id="ampTxt">--</b><button class="ghost" id="altBtn" title="定高：起飞 1 秒后接管，悬停推力自动辨识（随电量自动跟），松回原油门就刹住不升不降">定高 关</button><span class="dim" id="altTxt" style="font-size:12px"></span></div>
       <div class="sticks">
-        <div class="sk"><div class="jpad" id="jL"><span class="lb" style="top:3px">升</span><span class="lb" style="bottom:3px">降</span><div class="kn"></div></div>左：升降 · 转向 <span>↑↓ ←→</span></div>
-        <div class="sk"><div class="jpad" id="jR"><span class="lb" style="top:3px">前</span><div class="kn"></div></div>右：前后左右 <span>WASD</span></div>
+        <div class="sk"><div class="jpad" id="jL"><span class="lb" style="top:3px">升</span><span class="lb" style="bottom:3px">降</span><div class="kn"></div></div>左：升降 <span>↑↓</span></div>
+        <div class="sk"><div class="jpad" id="jR"><span class="lb" style="top:3px">前</span><div class="kn"></div></div>右：前后 · 转向 <span>W/S A/D</span></div>
       </div>
       <div class="ftabs" id="ftabs"><button data-t="ctl" class="cur">控制</button><button data-t="par">参数</button><button data-t="crv">曲线</button></div>
       <div class="fpanel" id="fpPar" hidden></div>
@@ -453,7 +453,7 @@ nav button[data-s="4"],nav button[data-s="6"]{display:none}
       </div>
       </div>
       <div class="keys" style="display:none"><span class="key" id="kU"></span><span class="key" id="kL"></span><span class="key" id="kD"></span><span class="key" id="kR"></span></div>
-      <div class="dim khint" style="font-size:12px;text-align:center">⏎ 起飞 · 空格 慢降（再按急停）· Esc 急停 · 摇杆都松手回中 · ↑↓ 升降 ←→ 转向 WASD 方向 · 左边滑条 = 基准油门 · 定高时 R/F 升降一格</div>
+      <div class="dim khint" style="font-size:12px;text-align:center">⏎ 起飞 · 空格 慢降（再按急停）· Esc 急停 · 摇杆都松手回中 · ↑↓ 升降 · W/S 前后 · A/D 或 ←→ 转向 · 左边滑条 = 基准油门 · 定高时 R/F 升降一格</div>
     </div>
   </div>
 </section>
@@ -1078,11 +1078,11 @@ function land(){ if(st.armed&&!st.landing){st.landing=true;st.touch=0;st.landT=p
 $('#btnLand').addEventListener('click',land);
 
 /* 方向幅度滑条：WASD 按下时给多大杆量，飞行中也能拖，记在本机 */
-const ampEl=$('#amp'); ampEl.value=lsGet('fly.amp2',0.4);   // 11-18：6° 太钝，默认改 10°（新键名，旧的 0.24 不再沿用）
+const ampEl=$('#amp'); ampEl.value=lsGet('fly.amp3',0.2);   // 11-18：6° 太钝，默认改 10°（新键名，旧的 0.24 不再沿用）
 function ampV(){ return +ampEl.value||0.24; }
 function ampShow(){ $('#ampTxt').textContent=Math.round(ampV()*(curP&&curP.mang?curP.mang:25)*10)/10+'°'; }
 ampEl.addEventListener('input',ampShow);
-ampEl.addEventListener('change',()=>{ lsSet('fly.amp2',ampV()); ampShow(); ampEl.blur(); });
+ampEl.addEventListener('change',()=>{ lsSet('fly.amp3',ampV()); ampShow(); ampEl.blur(); });
 ampShow(); setInterval(ampShow,2000);
 
 /* 心跳：解锁后每 100ms 发一次油门 + 方向（固件 0.9 秒收不到会自停） */
@@ -1090,8 +1090,8 @@ const keys={};
 setInterval(()=>{
   if(!st.armed||!S.on)return;
   // 记悬停油门：在空中、油门稳了 1 秒以上，取最近的平均（降落要按它来缓降）
-  const kv=(keys.kUp?1:0)-(keys.kDn?1:0), sv=J.ly||kv;   // 升降杆：-1..1
-  if(!st.landing&&sv&&!ALT.on){ st.target=Math.max(0,Math.min(100,st.target+sv*0.5)); thr.value=Math.round(st.target); }   // 关定高时一直推，基准也慢慢跟（5%/秒）
+  const kv=((keys.kUp?1:0)-(keys.kDn?1:0))*0.7, sv=J.ly||kv;   // 升降杆：-1..1
+  if(!st.landing&&sv&&!ALT.on){ st.target=Math.max(0,Math.min(100,st.target+sv*0.2)); thr.value=Math.round(st.target); }   // 关定高时一直推，基准也慢慢跟（2%/秒）
   if(!st.landing&&!sv&&st.cmd>40){ st.hovN=(st.hovN||0)+1; if(st.hovN>10) st.hov=st.hov?st.hov+(st.cmd-st.hov)*0.05:st.cmd; } else if(!st.landing) st.hovN=0;
   if(st.landing){
     // 11-18 改：0.5 秒收油门会在高处直接关电机砸下来（摔坏过一个电机）。
@@ -1107,17 +1107,17 @@ setInterval(()=>{
   if(st.target>st.cmd) st.cmd=Math.min(st.target,st.cmd+5);   // 往上最快 50%/秒
   else st.cmd=st.target;                                        // 往下立刻
   const T=ampV();   // 杆量 × 最大倾角 25°：0.24 ≈ 6°（3.5° 推不动，8.7° 会冲出去撞）
-  st.r=J.rx?J.rx*T:(keys.ArrowRight?T:0)-(keys.ArrowLeft?T:0);
+  st.r=0;   // 不再横着飞：左右改成转机头
   st.p=J.ry?J.ry*T:(keys.ArrowUp?T:0)-(keys.ArrowDown?T:0);   // sgP=-1 后：pitch+ = 1、2 号那边往下 = 往前飞
-  const yv=J.lx?J.lx*0.5:((keys.kRt?0.5:0)-(keys.kLt?0.5:0));
-  st.out=st.landing?st.cmd:Math.max(0,Math.min(100,st.cmd+sv*(ALT.on?12:15)));   // 松手 = 回到基准油门
+  const yv=J.rx?J.rx*0.6:((keys.ArrowRight||keys.kRt?0.4:0)-(keys.ArrowLeft||keys.kLt?0.4:0));
+  st.out=st.landing?st.cmd:Math.max(0,Math.min(100,st.cmd+sv*(ALT.on?6:8)));   // 松手 = 回到基准油门
   send('G,'+Math.round(st.out*10));
   send('Q,'+st.r.toFixed(2)+','+st.p.toFixed(2)+','+yv.toFixed(2));
 },100);
 setInterval(()=>{$('#thrPct').textContent=Math.round(st.armed?st.out:+thr.value)+'%';},100);
 setInterval(()=>{   // 用键盘时屏幕摇杆也跟着动，看得见杆量
   const f=(id,x,y)=>{ const p=$('#'+id); if(p.classList.contains('on')) return; const R=p.getBoundingClientRect().width*0.3; p.querySelector('.kn').style.transform=(x||y)?'translate('+(x*R).toFixed(0)+'px,'+(-y*R).toFixed(0)+'px)':''; };
-  f('jL',(keys.kRt?1:0)-(keys.kLt?1:0),(keys.kUp?1:0)-(keys.kDn?1:0)); f('jR',(keys.ArrowRight?1:0)-(keys.ArrowLeft?1:0),(keys.ArrowUp?1:0)-(keys.ArrowDown?1:0));
+  f('jL',0,(keys.kUp?1:0)-(keys.kDn?1:0)); f('jR',(keys.ArrowRight||keys.kRt?1:0)-(keys.ArrowLeft||keys.kLt?1:0),(keys.ArrowUp?1:0)-(keys.ArrowDown?1:0));
 },50);
 
 /* ---------------- 急停 ---------------- */
@@ -1155,17 +1155,18 @@ window.addEventListener('keyup',e=>{
 },true);
 window.addEventListener('blur',()=>{ for(const k in keys) keys[k]=false; });
 
-/* 屏幕摇杆：鼠标/触摸拖，松手回中。左：上下 = 升降（在基准油门上 ±15%，定高时 ±12%），左右 = 转机头；右：前后左右 */
+/* 屏幕摇杆：鼠标/触摸拖，松手回中。左：上下 = 升降（基准油门 ±8%，定高时 ±6%）；右：上下 = 前后，左右 = 转机头 */
+function jexpo(v){ return 0.3*v+0.7*v*v*v; }
 function jdz(v){ const a=Math.abs(v); return a<0.15?0:Math.sign(v)*(a-0.15)/0.85; }
-function jstick(id,fn){ const pad=$('#'+id), kn=pad.querySelector('.kn'); let act=null;
-  const upd=e=>{ const r=pad.getBoundingClientRect(), R=r.width*0.3; let x=(e.clientX-(r.left+r.width/2))/R, y=(e.clientY-(r.top+r.height/2))/R; const m=Math.hypot(x,y); if(m>1){x/=m;y/=m;}
+function jstick(id,fn,lock){ const pad=$('#'+id), kn=pad.querySelector('.kn'); let act=null;
+  const upd=e=>{ const r=pad.getBoundingClientRect(), R=r.width*0.3; let x=(e.clientX-(r.left+r.width/2))/R, y=(e.clientY-(r.top+r.height/2))/R; if(lock) x=0; const m=Math.hypot(x,y); if(m>1){x/=m;y/=m;}
     kn.style.transform='translate('+(x*R).toFixed(0)+'px,'+(y*R).toFixed(0)+'px)'; fn(x,-y); };
   const end=e=>{ if(e.pointerId!==act) return; act=null; pad.classList.remove('on'); kn.style.transform=''; fn(0,0); };
   pad.addEventListener('pointerdown',e=>{ e.preventDefault(); if(act!==null) return; act=e.pointerId; try{pad.setPointerCapture(act);}catch(x){} pad.classList.add('on'); upd(e); });
   pad.addEventListener('pointermove',e=>{ if(e.pointerId===act) upd(e); });
   ['pointerup','pointercancel','lostpointercapture'].forEach(ev=>pad.addEventListener(ev,end)); }
-jstick('jL',(x,y)=>{ J.lx=jdz(x); J.ly=jdz(y); if(J.ly) st.landing=false; });
-jstick('jR',(x,y)=>{ const m=Math.hypot(x,y), k=m<0.1?0:(m-0.1)/0.9/m; J.rx=x*k; J.ry=y*k; });
+jstick('jL',(x,y)=>{ J.ly=jexpo(jdz(y)); if(J.ly) st.landing=false; },true);
+jstick('jR',(x,y)=>{ J.rx=jexpo(jdz(x)); J.ry=jexpo(jdz(y)); });
 
 /* ---------------- 手感 ---------------- */
 /* 直接调参数：改 BASE → 写电脑 tune.json（下次连上也用它）→ 发给飞机并存盘 */
