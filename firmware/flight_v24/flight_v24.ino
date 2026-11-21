@@ -2709,7 +2709,7 @@ button{font:inherit;color:inherit}
         </div>
       </div>
       <div class="btns">
-        <button class="btn go" id="go"><span id="goT">起飞</span><small id="goS">按住 0.6 秒</small><span class="pg" id="gopg"></span></button>
+        <button class="btn go" id="go"><span id="goT">解锁</span><small id="goS">按住 0.6 秒</small><span class="pg" id="gopg"></span></button>
         <button class="btn land" id="land">降落<small>慢慢落下并上锁</small></button>
         <button class="btn stop" id="stop">⏹ 急停</button>
       </div>
@@ -2730,7 +2730,7 @@ button{font:inherit;color:inherit}
 </div></div>
 <div class="sheet" id="sheet" hidden><div class="box">
   <h3>设置</h3>
-  <div class="sec"><div class="lab">一键起飞油门<i>带保护圈 49 g：悬停约 70%</i></div>
+  <div class="sec"><div class="lab">起飞参考油门<i>推杆时先快速升到这附近，再由你慢慢加</i></div>
     <button class="sb" id="km">−</button><b class="big" id="kv" style="width:56px;text-align:center">64%</b><button class="sb" id="kp">+</button></div>
   <div class="sec"><div class="lab">校准水平<i>飞机放在平的桌面上、别碰它，再点</i></div>
     <button class="lk" id="lvl" style="flex:none;padding:10px 18px">⊙ 校准</button></div>
@@ -2763,7 +2763,7 @@ async function get(p){var ac=new AbortController(),to=setTimeout(function(){ac.a
 /* ---------- 状态 ---------- */
 var S={on:false,armed:false,f:0,vb:0,roll:0,pitch:0,yaw:0,o:[0,0,0,0],rssi:0,usb:false};
 var C={cmd:0,target:0,out:0,v:0,landing:false,r:0,p:0,y:0,mine:false,hov:0,hovN:0,lt:0,lf:0,touch:0};
-var busy=false, tk=lsGet('tk3',52), lastRx=0, seq=0, ws=null, armT=0, trimDirty=false, P=null, vbF=0, pctF=-1;
+var IDLE=10, busy=false, tk=lsGet('tk3',52), lastRx=0, seq=0, ws=null, armT=0, trimDirty=false, P=null, vbF=0, pctF=-1;
 var FAULT={1:'IMU 异常',2:'信号断了',4:'倾斜太大',8:'电池没电'};
 
 /* ---------- WebSocket（端口 81）：每 50 ms 发杆量，回遥测；0.9 秒收不到飞机自己停 ---------- */
@@ -2792,8 +2792,13 @@ function wsSend(s){if(ws&&ws.readyState===1&&ws.bufferedAmount<256){ws.send(s);r
 
 setInterval(function(){
   var fly=S.armed&&C.mine&&!C.landing;
-  /* 左摇杆上下 = 在基准油门上加减（关定高 ±8%，开定高 ±6%）；关定高时一直推着，基准也慢慢跟（满杆 2%/秒），松手就停在新基准 */
-  if(fly&&C.v&&!ALT)C.target=Math.max(0,Math.min(100,C.target+C.v*0.1));
+  /* 手动起飞：解锁后怠速；推左杆先较快升到悬停附近，再在基准上 ±8%（定高 ±6%）。松手停在基准；没定高时拉到底并按住 1 秒 = 上锁 */
+  var spool=(C.hov||tk-4)-2;
+  if(fly&&C.v){
+    if(C.target<spool&&C.v>0)C.target=Math.min(spool,C.target+Math.max(0.15,C.v)*2);
+    else if(!ALT)C.target=Math.max(IDLE,Math.min(100,C.target+C.v*(C.target<=spool&&C.v<0?0.5:0.1)));
+  }
+  if(fly&&!ALT&&C.v<-0.8&&C.target<=IDLE){C.dn=(C.dn||0)+1;if(C.dn>=20){C.dn=0;disarm('已上锁');}}else C.dn=0;
   if(fly&&!C.v&&C.cmd>40){C.hovN++;if(C.hovN>20)C.hov=C.hov?C.hov+(C.cmd-C.hov)*0.03:C.cmd;}else if(!C.landing)C.hovN=0;
   if(C.landing){   // 11-18：以前线性收油门（25%/s），高处会直接掉下来摔坏电机 → 改成按悬停油门缓降
     var el=(performance.now()-C.lt)/1000,hv=C.hov||C.lf,desc=Math.round(hv*0.92),tg;
@@ -2802,7 +2807,8 @@ setInterval(function(){
     else tg=Math.max(0,desc*(1-(el-(C.touch||3.5))/0.4));
     C.target=C.cmd=Math.max(0,tg);if(C.target<=0){C.landing=false;C.touch=0;disarm('落地 ✓');}}
   if(C.target>C.cmd)C.cmd=Math.min(C.target,C.cmd+2.5);else C.cmd=C.target;      // 往上最快 50%/秒，往下立刻
-  C.out=fly?Math.max(0,Math.min(100,C.cmd+C.v*(ALT?6:8))):C.cmd;
+  var nx=fly&&C.target>=spool?Math.max(0,Math.min(100,C.cmd+C.v*(ALT?6:8))):C.cmd;
+  C.out=fly&&nx>C.out?Math.min(nx,C.out+2.5):nx;   // 往上最快 50%/秒，不猛冲
   wsSend('U,'+(++seq)+','+(S.armed&&C.mine?1:0)+','+Math.round(C.out*10)+','+C.r.toFixed(2)+','+C.p.toFixed(2)+','+C.y.toFixed(2));
   render();
 },50);
@@ -2828,29 +2834,29 @@ function render(){
   var st=$('#st'),s,c;
   if(!on){s='没连上';c='err';}
   else if(S.armed&&!C.mine){s='电脑在遥控';c='warn';}
-  else if(S.armed){s=C.landing?'缓降中…':'飞行中';c='ok';}
+  else if(S.armed){s=C.landing?'缓降中…':C.target<=IDLE?'已解锁 · 推左杆起飞':'飞行中';c='ok';}
   else if(S.f&1){s='IMU 异常，不能起飞';c='err';}
   else if(S.vb&&S.vb<3400){s='电量低，先充电';c='warn';}
-  else{s='待机 · 可以起飞';c='';}
+  else{s='待机 · 按住解锁';c='';}
   txt(st,s);st.className='st '+c;
   txt($('#nR'),S.roll.toFixed(1));txt($('#nP'),S.pitch.toFixed(1));txt($('#nY'),Math.round(S.yaw)+'');
   $('#bub').style.transform='translate('+Math.max(-22,Math.min(22,S.roll*1.2)).toFixed(1)+'px,'+Math.max(-22,Math.min(22,-S.pitch*1.2)).toFixed(1)+'px)';
   for(var k=0;k<4;k++)$('#m'+k).style.width=Math.max(0,Math.min(100,S.o[k]/10))+'%';
   var show=S.armed?C.out:0;
   $('#fill').style.width=show+'%';$('#tgt').style.left=(S.armed?C.target:tk)+'%';
-  txt($('#tpct'),S.armed?Math.round(show)+'%':'起飞 '+tk+'%');
-  txt($('#goT'),S.armed?'回到 '+tk+'%':'起飞');txt($('#goS'),S.armed?'点一下':'按住 0.6 秒 → '+tk+'%');
+  txt($('#tpct'),S.armed?Math.round(show)+'%':'未解锁');
+  txt($('#goT'),S.armed?'已解锁':'解锁');txt($('#goS'),S.armed?'推左杆起飞':'按住 0.6 秒');
 }
 
 /* ---------- 起飞 / 降落 / 急停 ---------- */
 async function takeoff(){
   if(!S.on){toast('还没连上飞机',1);return;}
-  if(S.armed){C.landing=false;C.target=tk;C.cmd=Math.max(C.cmd,tk);return;}
+  if(S.armed)return;
   C.cmd=C.target=0;
   var r=await get('/api/arm?on=1');
   if(!r){toast('网络不通，没起飞',1);return;}
   if(!r.ok){toast('不能起飞：'+(r.why||'条件不满足'),1);return;}
-  S.armed=true;C.mine=true;S.wasMine=true;armT=performance.now();C.landing=false;C.target=C.cmd=tk;buzz(40);
+  S.armed=true;C.mine=true;S.wasMine=true;armT=performance.now();C.landing=false;C.target=C.cmd=C.out=IDLE;buzz(40);toast('已解锁：慢慢推左杆起飞');
 }
 function disarm(msg){
   C.cmd=C.target=0;C.landing=false;wsSend('X');get('/api/arm?on=0');
@@ -2886,7 +2892,7 @@ function stick(pad,kn,fn,ok,lock){var act=null;
   pad.addEventListener('pointermove',function(e){if(e.pointerId===act)upd(e);});
   ['pointerup','pointercancel','lostpointercapture'].forEach(function(ev){pad.addEventListener(ev,end);});}
 stick($('#lpad'),$('#lknob'),function(x,y){C.v=expo(dz(y));if(C.v)C.landing=false;},
-  function(){if(!S.armed||!C.mine){toast('先按“起飞”');return false;}return true;},true);
+  function(){if(!S.armed||!C.mine){toast('先按住“解锁”');return false;}return true;},true);
 /* v24 定高：开着时飞行中 −/+ = 降/升一格（10 cm），松开自动悬停；离地 1 秒多后飞机自己接管 */
 var ALT=lsGet('altOn',false);
 function altShow(){var b=$('#altB');b.textContent='定高 '+(ALT?'开':'关');b.classList.toggle('on',ALT);}

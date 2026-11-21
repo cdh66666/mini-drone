@@ -453,7 +453,7 @@ nav button[data-s="4"],nav button[data-s="6"]{display:none}
       </div>
       </div>
       <div class="keys" style="display:none"><span class="key" id="kU"></span><span class="key" id="kL"></span><span class="key" id="kD"></span><span class="key" id="kR"></span></div>
-      <div class="dim khint" style="font-size:12px;text-align:center">⏎ 起飞 · 空格 慢降（再按急停）· Esc 急停 · 摇杆都松手回中 · ↑↓ 升降 · W/S 前后 · A/D 或 ←→ 转向 · 左边滑条 = 基准油门 · 定高时 R/F 升降一格</div>
+      <div class="dim khint" style="font-size:12px;text-align:center">⏎ 解锁 · 推左杆/↑ 起飞 · 拉到底 1 秒上锁 · 空格 慢降（再按急停）· Esc 急停 · 摇杆都松手回中 · ↑↓ 升降 · W/S 前后 · A/D 或 ←→ 转向 · 左边滑条 = 基准油门 · 定高时 R/F 升降一格</div>
     </div>
   </div>
 </section>
@@ -1053,16 +1053,16 @@ thr.addEventListener('input',()=>{st.target=+thr.value;st.landing=false;});
 const tk=$('#tkoff');tk.value=lsGet('fly.tkoff3',52);   // 11-20 拆护圈后 39 g：推力台测得悬停约 46%，起飞给 52%
 tk.addEventListener('change',()=>{const v=Math.max(20,Math.min(90,+tk.value||52));tk.value=v;lsSet('fly.tkoff3',v);tk.blur();});
 let pendingTk=false;
-function takeoffJump(){ const v=+tk.value||64; st.landing=false; st.target=v; st.cmd=v; thr.value=v; toast('⏎ 起飞 '+v+'%'); }
+const IDLE=10;   // 解锁后怠速，推左杆才起飞
 function takeoff(){
   if(!S.on||cur!==3) return;
   if(!confirmed){toast('先点“确认”',1);$('#confirm').classList.add('flash');setTimeout(()=>$('#confirm').classList.remove('flash'),500);return;}
-  if(st.armed){ takeoffJump(); return; }
+  if(st.armed) return;
   pendingTk=true; $('#arm').click(); setTimeout(()=>{pendingTk=false;},1500);
 }
 function armedUI(on){
+  if(on&&!st.armed){ pendingTk=false; st.landing=false; st.target=st.cmd=st.out=IDLE; thr.value=IDLE; toast('已解锁：慢慢推左杆或按 ↑ 起飞'); }
   st.armed=on;const b=$('#arm');
-  if(on&&pendingTk){ pendingTk=false; setTimeout(takeoffJump,200); }
   if(on) liveReset();
   b.classList.toggle('armed',on);b.classList.toggle('okb',!on);b.textContent=on?'🔒 上锁':'🔓 解锁';
   if(!on){st.cmd=0;st.target=0;thr.value=0;st.landing=false;}
@@ -1091,7 +1091,13 @@ setInterval(()=>{
   if(!st.armed||!S.on)return;
   // 记悬停油门：在空中、油门稳了 1 秒以上，取最近的平均（降落要按它来缓降）
   const kv=((keys.kUp?1:0)-(keys.kDn?1:0))*0.7, sv=J.ly||kv;   // 升降杆：-1..1
-  if(!st.landing&&sv&&!ALT.on){ st.target=Math.max(0,Math.min(100,st.target+sv*0.2)); thr.value=Math.round(st.target); }   // 关定高时一直推，基准也慢慢跟（2%/秒）
+  const spool=(st.hov||(+tk.value||52)-4)-2;   // 手动起飞：推杆先较快升到悬停附近，再在基准上 ±8%
+  if(!st.landing&&sv){
+    if(st.target<spool&&sv>0) st.target=Math.min(spool,st.target+Math.max(0.15,sv)*4);
+    else if(!ALT.on) st.target=Math.max(IDLE,Math.min(100,st.target+sv*(st.target<=spool&&sv<0?1:0.2)));
+    thr.value=Math.round(st.target);
+  }
+  if(!st.landing&&!ALT.on&&sv<-0.65&&st.target<=IDLE){ st.dn=(st.dn||0)+1; if(st.dn>=10){ st.dn=0; send('A,0'); armedUI(false); toast('已上锁'); return; } } else st.dn=0;   // 拉到底按住 1 秒 = 上锁
   if(!st.landing&&!sv&&st.cmd>40){ st.hovN=(st.hovN||0)+1; if(st.hovN>10) st.hov=st.hov?st.hov+(st.cmd-st.hov)*0.05:st.cmd; } else if(!st.landing) st.hovN=0;
   if(st.landing){
     // 11-18 改：0.5 秒收油门会在高处直接关电机砸下来（摔坏过一个电机）。
@@ -1110,7 +1116,8 @@ setInterval(()=>{
   st.r=0;   // 不再横着飞：左右改成转机头
   st.p=J.ry?J.ry*T:(keys.ArrowUp?T:0)-(keys.ArrowDown?T:0);   // sgP=-1 后：pitch+ = 1、2 号那边往下 = 往前飞
   const yv=J.rx?J.rx*0.6:((keys.ArrowRight||keys.kRt?0.4:0)-(keys.ArrowLeft||keys.kLt?0.4:0));
-  st.out=st.landing?st.cmd:Math.max(0,Math.min(100,st.cmd+sv*(ALT.on?6:8)));   // 松手 = 回到基准油门
+  const nx=st.landing||st.target<spool?st.cmd:Math.max(0,Math.min(100,st.cmd+sv*(ALT.on?6:8)));   // 松手 = 回到基准油门
+  st.out=!st.landing&&nx>st.out?Math.min(nx,st.out+5):nx;   // 往上最快 50%/秒
   send('G,'+Math.round(st.out*10));
   send('Q,'+st.r.toFixed(2)+','+st.p.toFixed(2)+','+yv.toFixed(2));
 },100);
